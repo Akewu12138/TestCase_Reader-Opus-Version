@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>测试用例执行器</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- 顶部栏 -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="brand">测试用例执行器</span>
+      <span id="fileName" class="file-name"></span>
+    </div>
+    <div class="topbar-right">
+      <button id="viewToggle" class="btn btn-ghost" title="切换测试详情 / 执行界面">测试详情</button>
+      <select id="sheetFilter" class="sheet-select" title="按模块跳转"></select>
+      <button id="jumpNext" class="btn btn-ghost" title="跳到下一条未完成">下一条未测</button>
+      <a id="downloadBtn" class="btn btn-ghost" href="/api/download">下载 Excel</a>
+      <span id="saveStatus" class="save-status"></span>
+    </div>
+  </header>
+
+  <!-- 进度条 -->
+  <div class="progress-wrap">
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <span id="progressText" class="progress-text">0 / 0</span>
+  </div>
+
+  <!-- 主内容 -->
+  <main id="main" class="main">
+    <!-- 加载/空态 -->
+    <section id="loader" class="loader">正在加载测试用例…</section>
+
+    <!-- 用例卡片（由 JS 渲染填充） -->
+    <section id="card" class="card hidden">
+      <div class="card-head">
+        <div class="badges">
+          <span id="caseId" class="badge badge-id"></span>
+          <span id="priority" class="badge"></span>
+          <span id="risk" class="badge"></span>
+          <span id="moduleTag" class="badge badge-module"></span>
+        </div>
+        <h1 id="title" class="case-title"></h1>
+        <div id="scenario" class="case-scenario"></div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">前置条件</h2>
+        <div id="precondition" class="section-body"></div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">测试步骤</h2>
+        <ol id="steps" class="steps-list"></ol>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">预期结果</h2>
+        <div id="expected" class="section-body expected"></div>
+      </div>
+
+      <!-- 执行区 -->
+      <div class="exec">
+        <h2 class="section-title">执行结果</h2>
+        <div class="result-buttons" id="resultButtons">
+          <button class="rbtn rbtn-pass" data-result="PASS">通过 <kbd>1</kbd></button>
+          <button class="rbtn rbtn-fail" data-result="FAIL">失败 <kbd>2</kbd></button>
+          <button class="rbtn rbtn-block" data-result="BLOCK">阻塞 <kbd>3</kbd></button>
+          <button class="rbtn rbtn-na" data-result="NA">跳过 <kbd>4</kbd></button>
+        </div>
+
+        <label class="field">
+          <span class="field-label">实际现象 / 结果</span>
+          <textarea id="actual" class="field-input" rows="3" placeholder="记录实际观察到的现象或结果…"></textarea>
+        </label>
+
+        <div class="field-row">
+          <label class="field field-time">
+            <span class="field-label">发现时间</span>
+            <div class="time-row">
+              <input id="foundTime" class="field-input" type="text" placeholder="点击记录或手动输入 (YYYY-MM-DD HH:mm:ss)" />
+              <button id="stampBtn" class="btn btn-small">记录当前时间</button>
+              <button id="clearTimeBtn" class="btn btn-small btn-ghost">清除</button>
+            </div>
+          </label>
+        </div>
+
+        <div class="field-row two-col">
+          <label class="field">
+            <span class="field-label">BugID</span>
+            <input id="bugId" class="field-input" type="text" placeholder="关联缺陷编号" />
+          </label>
+          <label class="field">
+            <span class="field-label">测试人员</span>
+            <input id="tester" class="field-input" type="text" placeholder="你的名字" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-label">备注 / 问题描述</span>
+          <textarea id="note" class="field-input" rows="2" placeholder="补充说明或问题描述…"></textarea>
+        </label>
+      </div>
+    </section>
+
+    <!-- 测试详情页（按 Sheet 分组，由 JS 渲染填充） -->
+    <section id="detailView" class="detail-view hidden">
+      <div class="detail-head">
+        <h1 class="detail-title">测试详情</h1>
+        <div id="detailSummary" class="detail-summary"></div>
+      </div>
+      <div id="sheetGroups" class="sheet-groups"></div>
+    </section>
+  </main>
+
+  <!-- 底部导航 -->
+  <footer id="navbar" class="navbar">
+    <button id="prevBtn" class="btn btn-nav">← 上一条 <kbd>←</kbd></button>
+    <span id="navCounter" class="nav-counter">- / -</span>
+    <button id="nextBtn" class="btn btn-nav">下一条 → <kbd>→</kbd></button>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
