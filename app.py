@@ -1,32 +1,80 @@
 # -*- coding: utf-8 -*-
 """Flask 入口与 API 路由。
 
-默认加载并原地读写工作区内的目标 Excel，以满足"实时同步回原始文件"。
-也支持上传其他 xlsx（写回服务端副本，经 /api/download 下载）。
+工作模型：
+- 测试用例文件统一存放在 uploads/testing。启动时若该目录为空且存在旧版
+  根目录文件，则自动播种一份，保证历史进度可延续。
+- 初始页列出 testing 目录中的文件，由用户选择"测试阶段/测试人员"并开始测试。
+- 选中文件后原地读写以实现"实时同步回原始文件"，并在首次访问时生成备份。
 """
 
 import os
+import shutil
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
-from werkzeug.utils import secure_filename
 
 import excel_service
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+TESTING_DIR = os.path.join(UPLOAD_DIR, "testing")
 BACKUP_DIR = os.path.join(UPLOAD_DIR, "backups")
 
-# 工作区内的默认目标文件
-DEFAULT_EXCEL = os.path.join(BASE_DIR, "多机测试用例_合并版.xlsx")
+# 旧版根目录默认文件：仅用于首次向 testing 目录播种，保证历史进度延续
+LEGACY_EXCEL = os.path.join(BASE_DIR, "多机测试用例_合并版.xlsx")
+
+ALLOWED_EXT = (".xlsx", ".xls")
 
 app = Flask(__name__, static_folder=None)
 
-# 当前工作文件路径；已备份的文件集合（避免重复备份）
+# 当前工作文件路径、会话信息（测试阶段/测试人员）、已备份文件集合
 STATE = {
-    "current_path": DEFAULT_EXCEL,
+    "current_path": None,
+    "stage": "",
+    "tester": "",
     "backed_up": set(),
 }
+
+
+def _safe_name(filename):
+    """仅取文件名部分并剔除危险字符，保留中文（werkzeug 会误删非 ASCII）。"""
+    name = os.path.basename(filename or "").replace("\\", "").replace("/", "")
+    name = name.replace("..", "").strip()
+    return name
+
+
+def _ensure_dirs():
+    os.makedirs(TESTING_DIR, exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def _seed_testing_dir():
+    """若 testing 目录为空且旧版根文件存在，则播种一份，延续历史进度。"""
+    _ensure_dirs()
+    has_excel = any(f.lower().endswith(ALLOWED_EXT) for f in os.listdir(TESTING_DIR))
+    if not has_excel and os.path.exists(LEGACY_EXCEL):
+        try:
+            shutil.copy2(LEGACY_EXCEL, os.path.join(TESTING_DIR, os.path.basename(LEGACY_EXCEL)))
+        except Exception as exc:
+            app.logger.warning("播种默认用例失败: %s", exc)
+
+
+def _list_testing_files():
+    """列出 testing 目录下的 Excel 文件（按修改时间倒序）。"""
+    _ensure_dirs()
+    items = []
+    for name in os.listdir(TESTING_DIR):
+        if not name.lower().endswith(ALLOWED_EXT):
+            continue
+        full = os.path.join(TESTING_DIR, name)
+        try:
+            st = os.stat(full)
+        except OSError:
+            continue
+        items.append({"name": name, "mtime": int(st.st_mtime), "size": st.st_size})
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return items
 
 
 def _ensure_backup(path):
@@ -37,9 +85,30 @@ def _ensure_backup(path):
     if os.path.exists(path):
         try:
             excel_service.make_backup(path, BACKUP_DIR)
-        except Exception as exc:  # 备份失败不阻断主流程，但记录
+        except Exception as exc:
             app.logger.warning("备份失败: %s", exc)
         STATE["backed_up"].add(real)
+
+
+def _resolve_testing_path(file_name):
+    """将文件名解析为 testing 目录下的合法绝对路径，防止路径穿越。"""
+    name = _safe_name(file_name)
+    if not name or not name.lower().endswith(ALLOWED_EXT):
+        return None
+    path = os.path.join(TESTING_DIR, name)
+    if os.path.abspath(os.path.dirname(path)) != os.path.abspath(TESTING_DIR):
+        return None
+    return path
+
+
+def _cases_response(path):
+    """解析当前文件并组织完整响应负载。"""
+    _ensure_backup(path)
+    payload, _ = excel_service.parse_workbook(path)
+    payload["fileName"] = os.path.basename(path)
+    payload["stage"] = STATE["stage"]
+    payload["tester"] = STATE["tester"]
+    return payload
 
 
 @app.route("/")
@@ -52,20 +121,13 @@ def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
 
 
-@app.route("/api/cases", methods=["GET"])
-def get_cases():
-    path = STATE["current_path"]
-    if not os.path.exists(path):
-        return jsonify({"error": f"未找到 Excel 文件: {os.path.basename(path)}"}), 404
-    _ensure_backup(path)
-    try:
-        cases, progress = excel_service.parse_workbook(path)
-    except Exception as exc:
-        return jsonify({"error": f"解析失败: {exc}"}), 500
+@app.route("/api/testing-files", methods=["GET"])
+def testing_files():
     return jsonify({
-        "fileName": os.path.basename(path),
-        "cases": cases,
-        "progress": progress,
+        "files": _list_testing_files(),
+        "current": os.path.basename(STATE["current_path"]) if STATE["current_path"] else None,
+        "stage": STATE["stage"],
+        "tester": STATE["tester"],
     })
 
 
@@ -76,27 +138,46 @@ def upload():
     file = request.files["file"]
     if not file.filename:
         return jsonify({"error": "文件名为空"}), 400
-    if not file.filename.lower().endswith((".xlsx", ".xls")):
+    if not file.filename.lower().endswith(ALLOWED_EXT):
         return jsonify({"error": "仅支持 .xlsx/.xls 文件"}), 400
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    filename = secure_filename(file.filename) or "working.xlsx"
-    if not filename.lower().endswith((".xlsx", ".xls")):
+    _ensure_dirs()
+    filename = _safe_name(file.filename) or "working.xlsx"
+    if not filename.lower().endswith(ALLOWED_EXT):
         filename += ".xlsx"
-    save_path = os.path.join(UPLOAD_DIR, filename)
+    save_path = os.path.join(TESTING_DIR, filename)
     file.save(save_path)
 
-    STATE["current_path"] = save_path
-    _ensure_backup(save_path)
+    return jsonify({"files": _list_testing_files(), "uploaded": filename})
+
+
+@app.route("/api/select", methods=["POST"])
+def select_file():
+    data = request.get_json(silent=True) or {}
+    path = _resolve_testing_path(data.get("fileName", ""))
+    if not path or not os.path.exists(path):
+        return jsonify({"error": "文件不存在或不合法"}), 400
+
+    STATE["current_path"] = path
+    STATE["stage"] = str(data.get("stage", "") or "").strip()
+    STATE["tester"] = str(data.get("tester", "") or "").strip()
     try:
-        cases, progress = excel_service.parse_workbook(save_path)
+        payload = _cases_response(path)
     except Exception as exc:
-        return jsonify({"error": f"解析失败: {exc}"}), 500
-    return jsonify({
-        "fileName": os.path.basename(save_path),
-        "cases": cases,
-        "progress": progress,
-    })
+        return jsonify({"error": "解析失败: %s" % exc}), 500
+    return jsonify(payload)
+
+
+@app.route("/api/cases", methods=["GET"])
+def get_cases():
+    path = STATE["current_path"]
+    if not path or not os.path.exists(path):
+        return jsonify({"needsSetup": True, "files": _list_testing_files()})
+    try:
+        payload = _cases_response(path)
+    except Exception as exc:
+        return jsonify({"error": "解析失败: %s" % exc}), 500
+    return jsonify(payload)
 
 
 @app.route("/api/cases", methods=["PATCH"])
@@ -113,23 +194,26 @@ def patch_case():
             fields[key] = "" if data[key] is None else str(data[key])
 
     path = STATE["current_path"]
-    if not os.path.exists(path):
+    if not path or not os.path.exists(path):
         return jsonify({"error": "当前文件不存在"}), 404
     try:
         progress = excel_service.update_case(path, sheet, row_index, fields)
     except Exception as exc:
-        return jsonify({"error": f"写回失败: {exc}"}), 500
+        return jsonify({"error": "写回失败: %s" % exc}), 500
     return jsonify({"ok": True, "progress": progress})
 
 
 @app.route("/api/download", methods=["GET"])
 def download():
     path = STATE["current_path"]
-    if not os.path.exists(path):
+    if not path or not os.path.exists(path):
         return jsonify({"error": "文件不存在"}), 404
     return send_file(path, as_attachment=True, download_name=os.path.basename(path))
 
 
 if __name__ == "__main__":
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    _seed_testing_dir()
+    # 端口可通过环境变量 PORT 覆盖（默认 5000）；启动器与此保持一致。
+    # macOS 的隔空播放接收器会占用 5000，此时可改用其他端口。
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="127.0.0.1", port=port)

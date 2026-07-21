@@ -6,8 +6,15 @@
     cases: [],
     index: 0,
     progress: { done: 0, total: 0 },
+    sheets: [],              // 全部 Sheet 元信息 [{name,kind,title}]
+    previews: [],            // 只读预览 [{sheet,kind,title,grid,images}]
+    previewMap: {},          // sheet -> preview
+    files: [],               // testing 目录文件
+    selectedFile: null,      // 初始页选中的文件名
+    sessionTester: "",       // 会话测试人员（用于预填）
+    fileName: "",
     saveTimer: null,
-    view: "exec",            // "exec" 执行界面 | "detail" 测试详情
+    view: "setup",           // setup | exec | detail | preview
     expandedSheets: {},       // 详情页各分组展开状态
     detailInited: false,      // 详情页是否已做过首次默认展开
     foundTimeOriginal: "",    // 当前用例发现时间基准值（用于修改确认）
@@ -16,16 +23,23 @@
   // 测试结果显示文案与样式
   var RESULT_LABEL = { PASS: "通过", FAIL: "失败", BLOCK: "阻塞", NA: "跳过" };
   var RESULT_CLASS = { PASS: "res-pass", FAIL: "res-fail", BLOCK: "res-block", NA: "res-na" };
+  var KIND_LABEL = { functional: "功能", scenario: "场景", matrix: "矩阵", info: "信息" };
 
   // DOM 引用
   var el = {};
   var IDS = [
-    "fileName", "sheetFilter", "saveStatus", "progressFill", "progressText",
-    "loader", "card", "caseId", "priority", "risk", "moduleTag", "title",
-    "scenario", "precondition", "steps", "expected", "resultButtons",
+    "fileName", "sessionInfo", "execControls", "changeFile", "sheetFilter",
+    "saveStatus", "progressWrap", "progressFill", "progressText", "loader",
+    "setupView", "stageInput", "testerInput", "uploadBtn", "uploadInput",
+    "fileList", "setupHint", "startBtn",
+    "card", "caseId", "kindTag", "priority", "risk", "moduleTag", "title",
+    "scenario", "preconditionSection", "precondition",
+    "scenarioSection", "sceneDesc", "scenarioImages",
+    "stepsSection", "steps", "expectedSection", "expected", "resultButtons",
     "actual", "foundTime", "stampBtn", "clearTimeBtn", "bugId", "tester",
     "note", "prevBtn", "nextBtn", "navCounter", "jumpNext",
     "viewToggle", "detailView", "sheetGroups", "detailSummary", "navbar",
+    "previewView", "previewBack", "previewTitle", "previewBody",
   ];
 
   function $(id) { return document.getElementById(id); }
@@ -33,47 +47,251 @@
   function init() {
     IDS.forEach(function (id) { el[id] = $(id); });
     bindEvents();
-    loadCases();
+    loadInitial();
   }
 
-  /* ---------- 数据加载 ---------- */
-  function loadCases() {
-    fetch("/api/cases")
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+  function fetchJSON(url, opts) {
+    return fetch(url, opts).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    });
+  }
+
+  /* ---------- 启动 ---------- */
+  function loadInitial() {
+    fetchJSON("/api/cases")
       .then(function (res) {
         if (!res.ok) { showError(res.d.error || "加载失败"); return; }
-        state.cases = res.d.cases || [];
-        state.progress = res.d.progress || { done: 0, total: 0 };
-        el.fileName.textContent = res.d.fileName || "";
-        if (state.cases.length === 0) { showError("未找到测试用例"); return; }
-        buildSheetFilter();
-        el.loader.classList.add("hidden");
-        showView("exec");
+        if (res.d.needsSetup) {
+          state.files = res.d.files || [];
+          showSetup(res.d.stage, res.d.tester);
+          return;
+        }
+        applyPayload(res.d);
+        enterAfterLoad();
       })
       .catch(function (e) { showError("网络错误: " + e.message); });
   }
 
   function showError(msg) {
+    hideAllViews();
     el.loader.classList.remove("hidden");
-    el.card.classList.add("hidden");
     el.loader.textContent = msg;
   }
 
-  /* ---------- 渲染 ---------- */
+  function applyPayload(d) {
+    state.cases = d.cases || [];
+    state.progress = d.progress || { done: 0, total: 0 };
+    state.sheets = d.sheets || [];
+    state.previews = d.previews || [];
+    state.previewMap = {};
+    state.previews.forEach(function (p) { state.previewMap[p.sheet] = p; });
+    state.sessionTester = d.tester || "";
+    state.fileName = d.fileName || "";
+    state.index = 0;
+    state.detailInited = false;
+    state.expandedSheets = {};
+
+    el.fileName.textContent = d.fileName || "";
+    var parts = [];
+    if (d.stage) parts.push("阶段: " + d.stage);
+    if (d.tester) parts.push("测试人员: " + d.tester);
+    el.sessionInfo.textContent = parts.join("  ·  ");
+    buildSheetFilter();
+  }
+
+  // 载入后决定进入哪个视图：有可执行用例进执行页，否则若有预览进详情页
+  function enterAfterLoad() {
+    if (state.cases.length > 0) { showView("exec"); }
+    else if (state.previews.length > 0) { showView("detail"); }
+    else { showError("该文件未解析到可执行用例或预览内容"); }
+  }
+
+  /* ---------- 初始配置页 ---------- */
+  function showSetup(stage, tester) {
+    fetchJSON("/api/testing-files").then(function (res) {
+      if (res.ok) {
+        state.files = res.d.files || [];
+        if (typeof stage === "undefined") stage = res.d.stage;
+        if (typeof tester === "undefined") tester = res.d.tester;
+      }
+      if (typeof stage !== "undefined" && stage !== null && !el.stageInput.value) el.stageInput.value = stage;
+      if (typeof tester !== "undefined" && tester !== null && !el.testerInput.value) el.testerInput.value = tester;
+      // 默认选中当前文件或最新的一个
+      if (state.files.length) {
+        var cur = res.ok ? res.d.current : null;
+        state.selectedFile = cur && findFile(cur) ? cur : state.files[0].name;
+      } else {
+        state.selectedFile = null;
+      }
+      renderFileList();
+      showView("setup");
+    });
+  }
+
+  function findFile(name) {
+    for (var i = 0; i < state.files.length; i++) { if (state.files[i].name === name) return state.files[i]; }
+    return null;
+  }
+
+  function renderFileList() {
+    el.fileList.innerHTML = "";
+    if (!state.files.length) {
+      el.setupHint.textContent = "暂无用例文件，请点击上方按钮上传 .xlsx / .xls 文件。";
+      el.setupHint.className = "setup-hint warn";
+      el.startBtn.disabled = true;
+      return;
+    }
+    state.files.forEach(function (f) {
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "file-item" + (f.name === state.selectedFile ? " selected" : "");
+      var nameSpan = document.createElement("span");
+      nameSpan.className = "file-item-name";
+      nameSpan.textContent = f.name;
+      var meta = document.createElement("span");
+      meta.className = "file-item-meta";
+      meta.textContent = formatSize(f.size) + " · " + formatTime(f.mtime);
+      row.appendChild(nameSpan);
+      row.appendChild(meta);
+      row.addEventListener("click", function () {
+        state.selectedFile = f.name;
+        renderFileList();
+      });
+      el.fileList.appendChild(row);
+    });
+    el.setupHint.textContent = state.selectedFile ? ("已选择：" + state.selectedFile) : "请选择一个用例文件。";
+    el.setupHint.className = "setup-hint";
+    el.startBtn.disabled = !state.selectedFile;
+  }
+
+  function formatSize(n) {
+    if (!n) return "0 KB";
+    if (n < 1024 * 1024) return Math.max(1, Math.round(n / 1024)) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
+  }
+  function formatTime(sec) {
+    if (!sec) return "";
+    var d = new Date(sec * 1000);
+    function p(x) { return (x < 10 ? "0" : "") + x; }
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+
+  function uploadFile() {
+    var f = el.uploadInput.files && el.uploadInput.files[0];
+    if (!f) return;
+    var fd = new FormData();
+    fd.append("file", f);
+    el.setupHint.textContent = "正在上传…";
+    el.setupHint.className = "setup-hint";
+    fetchJSON("/api/upload", { method: "POST", body: fd })
+      .then(function (res) {
+        if (!res.ok) { el.setupHint.textContent = res.d.error || "上传失败"; el.setupHint.className = "setup-hint warn"; return; }
+        state.files = res.d.files || [];
+        state.selectedFile = res.d.uploaded || (state.files[0] && state.files[0].name);
+        renderFileList();
+      })
+      .catch(function () { el.setupHint.textContent = "上传失败"; el.setupHint.className = "setup-hint warn"; })
+      .then(function () { el.uploadInput.value = ""; });
+  }
+
+  function startTest() {
+    if (!state.selectedFile) { el.setupHint.textContent = "请先选择用例文件"; el.setupHint.className = "setup-hint warn"; return; }
+    el.startBtn.disabled = true;
+    el.setupHint.textContent = "正在加载用例…";
+    el.setupHint.className = "setup-hint";
+    var payload = {
+      fileName: state.selectedFile,
+      stage: el.stageInput.value.trim(),
+      tester: el.testerInput.value.trim(),
+    };
+    fetchJSON("/api/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) {
+        el.startBtn.disabled = false;
+        if (!res.ok) { el.setupHint.textContent = res.d.error || "加载失败"; el.setupHint.className = "setup-hint warn"; return; }
+        applyPayload(res.d);
+        enterAfterLoad();
+      })
+      .catch(function (e) { el.startBtn.disabled = false; el.setupHint.textContent = "网络错误: " + e.message; el.setupHint.className = "setup-hint warn"; });
+  }
+
+  /* ---------- 视图切换 ---------- */
+  function hideAllViews() {
+    ["setupView", "card", "detailView", "previewView"].forEach(function (k) { el[k].classList.add("hidden"); });
+    el.loader.classList.add("hidden");
+  }
+
+  function showView(view) {
+    state.view = view;
+    hideAllViews();
+    var isSetup = view === "setup";
+    var isExec = view === "exec";
+    var isDetail = view === "detail";
+    var isPreview = view === "preview";
+
+    el.setupView.classList.toggle("hidden", !isSetup);
+    el.card.classList.toggle("hidden", !isExec);
+    el.detailView.classList.toggle("hidden", !isDetail);
+    el.previewView.classList.toggle("hidden", !isPreview);
+
+    // 顶栏/进度/导航：初始页隐藏
+    el.execControls.classList.toggle("hidden", isSetup);
+    el.progressWrap.classList.toggle("hidden", isSetup);
+    el.navbar.classList.toggle("hidden", !isExec);
+
+    el.viewToggle.textContent = (isDetail || isPreview) ? "返回执行" : "测试详情";
+    el.viewToggle.classList.toggle("active", isDetail || isPreview);
+
+    if (isExec) { render(); }
+    else if (isDetail) {
+      flushSave();
+      if (!state.detailInited) {
+        var cur = state.cases[state.index];
+        if (cur) state.expandedSheets[cur.sheet] = true;
+        state.detailInited = true;
+      }
+      renderDetail();
+    }
+  }
+
+  /* ---------- 执行页渲染 ---------- */
   function render() {
     var c = state.cases[state.index];
     if (!c) return;
+    var isScenario = c.kind === "scenario";
 
-    setBadge(el.caseId, c.caseId, "");
+    setBadge(el.caseId, c.name || c.caseId, "");
+    el.kindTag.textContent = KIND_LABEL[c.kind] || "";
+    el.kindTag.className = "badge badge-kind" + (isScenario ? " badge-kind-scene" : "");
+    el.kindTag.style.display = el.kindTag.textContent ? "" : "none";
     setBadge(el.priority, c.priority, priorityClass(c.priority));
     setBadge(el.risk, c.risk ? "风险:" + c.risk : "", riskClass(c.risk));
     setBadge(el.moduleTag, c.module, "badge-module");
 
-    el.title.textContent = c.title || "(无标题)";
-    el.scenario.textContent = c.scenario || "";
+    // 前置条件（有则显示）
     el.precondition.textContent = c.precondition || "—";
-    el.expected.textContent = c.expected || "—";
-    renderSteps(c.steps);
+    el.preconditionSection.classList.toggle("hidden", !c.precondition && isScenario);
+
+    if (isScenario) {
+      el.title.textContent = c.scenario || c.name || "(场景)";
+      el.scenario.textContent = c.module || "";
+      el.sceneDesc.textContent = c.desc || c.expected || "—";
+      renderScenarioImages(c.images || []);
+      el.scenarioSection.classList.remove("hidden");
+      el.stepsSection.classList.add("hidden");
+      el.expectedSection.classList.add("hidden");
+    } else {
+      el.title.textContent = c.title || "(无标题)";
+      el.scenario.textContent = c.scenario || "";
+      el.scenarioSection.classList.add("hidden");
+      el.stepsSection.classList.remove("hidden");
+      el.expectedSection.classList.remove("hidden");
+      el.expected.textContent = c.expected || "—";
+      renderSteps(c.steps);
+    }
 
     // 执行区回显
     setActiveResult(c.result);
@@ -81,7 +299,8 @@
     el.foundTime.value = c.foundTime || "";
     state.foundTimeOriginal = el.foundTime.value; // 记录基准值用于修改确认
     el.bugId.value = c.bugId || "";
-    el.tester.value = c.tester || "";
+    // 测试人员：为空时用会话测试人员预填（可修改）
+    el.tester.value = c.tester || state.sessionTester || "";
     el.note.value = c.note || "";
 
     // 导航状态
@@ -91,6 +310,19 @@
     el.sheetFilter.value = c.sheet;
     updateProgress();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderScenarioImages(images) {
+    el.scenarioImages.innerHTML = "";
+    if (!images || !images.length) { el.scenarioImages.classList.add("hidden"); return; }
+    el.scenarioImages.classList.remove("hidden");
+    images.forEach(function (src) {
+      var img = document.createElement("img");
+      img.className = "scene-img";
+      img.src = src;
+      img.alt = "场景示意图";
+      el.scenarioImages.appendChild(img);
+    });
   }
 
   function setBadge(node, text, cls) {
@@ -142,7 +374,7 @@
     });
   }
 
-  // 兼容原有 PASS/FAIL/NA 以及多行文本（取首个可识别关键字）
+  // 兼容 PASS/FAIL/NA 以及多行文本（取首个可识别关键字）
   function normalizeResult(result) {
     if (!result) return "";
     var u = String(result).toUpperCase();
@@ -191,97 +423,169 @@
     setSaveStatus("全部用例已完成 🎉", "ok");
   }
 
-  /* ---------- 视图切换 / 测试详情页 ---------- */
-  function showView(view) {
-    state.view = view;
-    var isDetail = view === "detail";
-    el.card.classList.toggle("hidden", isDetail);
-    el.detailView.classList.toggle("hidden", !isDetail);
-    el.navbar.classList.toggle("hidden", isDetail);
-    el.viewToggle.textContent = isDetail ? "返回执行" : "测试详情";
-    el.viewToggle.classList.toggle("active", isDetail);
-    if (isDetail) {
-      flushSave();
-      // 首次进入详情页时默认展开当前用例所在分组，其余收起
-      if (!state.detailInited) {
-        var cur = state.cases[state.index];
-        if (cur) state.expandedSheets[cur.sheet] = true;
-        state.detailInited = true;
-      }
-      renderDetail();
-    } else {
-      render();
-    }
-  }
-
+  /* ---------- 测试详情页 ---------- */
   function renderDetail() {
     var container = el.sheetGroups;
     container.innerHTML = "";
 
-    // 按 Sheet 分组，保持原始顺序
-    var groups = [];
-    var map = {};
+    // 可执行用例按 Sheet 归组
+    var caseMap = {};
     state.cases.forEach(function (c, i) {
-      var key = c.sheet;
-      if (!map[key]) { map[key] = { sheet: key, title: c.sheetTitle || key, items: [] }; groups.push(map[key]); }
-      map[key].items.push({ c: c, index: i });
+      if (!caseMap[c.sheet]) caseMap[c.sheet] = [];
+      caseMap[c.sheet].push({ c: c, index: i });
     });
 
+    var execGroups = 0;
     var p = state.progress;
-    el.detailSummary.textContent = "共 " + groups.length + " 个分组 · 已完成 " + p.done + " / " + p.total;
 
-    groups.forEach(function (g) {
-      var done = 0;
-      g.items.forEach(function (it) { if (normalizeResult(it.c.result)) done++; });
-      var expanded = !!state.expandedSheets[g.sheet];
-
-      var groupEl = document.createElement("div");
-      groupEl.className = "sheet-group";
-
-      var header = document.createElement("button");
-      header.type = "button";
-      header.className = "sheet-group-header" + (expanded ? " expanded" : "");
-      var arrow = document.createElement("span");
-      arrow.className = "sg-arrow";
-      arrow.textContent = expanded ? "▲" : "▼"; // 收起用向上箭头，展开用向下箭头
-      var titleSpan = document.createElement("span");
-      titleSpan.className = "sg-title";
-      titleSpan.textContent = g.title;
-      var countSpan = document.createElement("span");
-      countSpan.className = "sg-count";
-      countSpan.textContent = done + " / " + g.items.length;
-      header.appendChild(arrow);
-      header.appendChild(titleSpan);
-      header.appendChild(countSpan);
-      header.addEventListener("click", function () {
-        state.expandedSheets[g.sheet] = !expanded;
-        renderDetail();
-      });
-      groupEl.appendChild(header);
-
-      if (expanded) {
-        var list = document.createElement("div");
-        list.className = "sg-list";
-        g.items.forEach(function (it) {
-          var norm = normalizeResult(it.c.result);
-          var row = document.createElement("button");
-          row.type = "button";
-          row.className = "sg-case" + (it.index === state.index ? " current" : "");
-          var idSpan = document.createElement("span");
-          idSpan.className = "sg-case-id";
-          idSpan.textContent = it.c.caseId || "(无编号)";
-          var resSpan = document.createElement("span");
-          resSpan.className = "sg-case-res " + (RESULT_CLASS[norm] || "res-none");
-          resSpan.textContent = norm ? RESULT_LABEL[norm] : "未测";
-          row.appendChild(idSpan);
-          row.appendChild(resSpan);
-          row.addEventListener("click", function () { openCase(it.index); });
-          list.appendChild(row);
-        });
-        groupEl.appendChild(list);
+    // 按原始 Sheet 顺序渲染：可执行组 + 只读预览组
+    state.sheets.forEach(function (s) {
+      if (caseMap[s.name]) {
+        execGroups++;
+        container.appendChild(buildCaseGroup(s, caseMap[s.name]));
+      } else if (state.previewMap[s.name]) {
+        container.appendChild(buildPreviewGroup(s));
       }
-      container.appendChild(groupEl);
     });
+
+    el.detailSummary.textContent = "共 " + state.sheets.length + " 个 Sheet · 可执行 " +
+      execGroups + " 组 · 已完成 " + p.done + " / " + p.total;
+  }
+
+  function buildCaseGroup(sheetMeta, items) {
+    var done = 0;
+    items.forEach(function (it) { if (normalizeResult(it.c.result)) done++; });
+    var expanded = !!state.expandedSheets[sheetMeta.name];
+
+    var groupEl = document.createElement("div");
+    groupEl.className = "sheet-group";
+
+    var header = document.createElement("button");
+    header.type = "button";
+    header.className = "sheet-group-header" + (expanded ? " expanded" : "");
+    var arrow = document.createElement("span");
+    arrow.className = "sg-arrow";
+    arrow.textContent = expanded ? "▲" : "▼";
+    var titleSpan = document.createElement("span");
+    titleSpan.className = "sg-title";
+    titleSpan.textContent = sheetMeta.title || sheetMeta.name;
+    var countSpan = document.createElement("span");
+    countSpan.className = "sg-count";
+    countSpan.textContent = done + " / " + items.length;
+    header.appendChild(arrow);
+    header.appendChild(titleSpan);
+    header.appendChild(countSpan);
+    header.addEventListener("click", function () {
+      state.expandedSheets[sheetMeta.name] = !expanded;
+      renderDetail();
+    });
+    groupEl.appendChild(header);
+
+    if (expanded) {
+      var list = document.createElement("div");
+      list.className = "sg-list";
+      items.forEach(function (it) {
+        var norm = normalizeResult(it.c.result);
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "sg-case" + (it.index === state.index ? " current" : "");
+        var idSpan = document.createElement("span");
+        idSpan.className = "sg-case-id";
+        idSpan.textContent = it.c.name || it.c.caseId || "(无编号)";
+        var resSpan = document.createElement("span");
+        resSpan.className = "sg-case-res " + (RESULT_CLASS[norm] || "res-none");
+        resSpan.textContent = norm ? RESULT_LABEL[norm] : "未测";
+        row.appendChild(idSpan);
+        row.appendChild(resSpan);
+        row.addEventListener("click", function () { openCase(it.index); });
+        list.appendChild(row);
+      });
+      groupEl.appendChild(list);
+    }
+    return groupEl;
+  }
+
+  function buildPreviewGroup(sheetMeta) {
+    var groupEl = document.createElement("div");
+    groupEl.className = "sheet-group";
+    var header = document.createElement("button");
+    header.type = "button";
+    header.className = "sheet-group-header preview-group";
+    var arrow = document.createElement("span");
+    arrow.className = "sg-arrow";
+    arrow.textContent = "»";
+    var titleSpan = document.createElement("span");
+    titleSpan.className = "sg-title";
+    titleSpan.textContent = sheetMeta.title || sheetMeta.name;
+    var tag = document.createElement("span");
+    tag.className = "sg-count sg-readonly";
+    tag.textContent = "只读预览 · " + (KIND_LABEL[sheetMeta.kind] || "");
+    header.appendChild(arrow);
+    header.appendChild(titleSpan);
+    header.appendChild(tag);
+    header.addEventListener("click", function () { openPreview(sheetMeta.name); });
+    groupEl.appendChild(header);
+    return groupEl;
+  }
+
+  /* ---------- 只读预览页 ---------- */
+  function openPreview(sheet) {
+    var pv = state.previewMap[sheet];
+    if (!pv) return;
+    el.previewTitle.textContent = (pv.title || pv.sheet) + "（只读预览）";
+    el.previewBody.innerHTML = "";
+
+    var grid = pv.grid || [];
+    if (grid.length) {
+      var wrap = document.createElement("div");
+      wrap.className = "preview-table-wrap";
+      var table = document.createElement("table");
+      table.className = "preview-table";
+      grid.forEach(function (rowVals, rIdx) {
+        var tr = document.createElement("tr");
+        rowVals.forEach(function (val) {
+          var cell = document.createElement(rIdx === 0 ? "th" : "td");
+          cell.textContent = val;
+          tr.appendChild(cell);
+        });
+        table.appendChild(tr);
+      });
+      wrap.appendChild(table);
+      el.previewBody.appendChild(wrap);
+    }
+
+    var images = pv.images || [];
+    if (images.length) {
+      var gallery = document.createElement("div");
+      gallery.className = "preview-gallery";
+      var gh = document.createElement("h2");
+      gh.className = "section-title";
+      gh.textContent = "示意图 (" + images.length + ")";
+      el.previewBody.appendChild(gh);
+      images.forEach(function (im) {
+        var fig = document.createElement("figure");
+        fig.className = "preview-fig";
+        var img = document.createElement("img");
+        img.src = im.dataUrl;
+        img.alt = "示意图";
+        var cap = document.createElement("figcaption");
+        cap.textContent = im.row ? ("位置 行" + im.row + " 列" + im.col) : "";
+        fig.appendChild(img);
+        if (cap.textContent) fig.appendChild(cap);
+        gallery.appendChild(fig);
+      });
+      el.previewBody.appendChild(gallery);
+    }
+
+    if (!grid.length && !images.length) {
+      var empty = document.createElement("div");
+      empty.className = "loader";
+      empty.textContent = "该 Sheet 无可展示内容";
+      el.previewBody.appendChild(empty);
+    }
+
+    showView("preview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // 打开指定用例的执行界面
@@ -328,12 +632,11 @@
     c.note = fields.note;
 
     var payload = Object.assign({ sheet: c.sheet, rowIndex: c.rowIndex }, fields);
-    fetch("/api/cases", {
+    fetchJSON("/api/cases", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (!res.ok) { setSaveStatus("保存失败", "error"); return; }
         if (res.d.progress) { state.progress = res.d.progress; updateProgress(); }
@@ -349,6 +652,12 @@
 
   /* ---------- 事件绑定 ---------- */
   function bindEvents() {
+    // 初始页
+    el.uploadBtn.addEventListener("click", function () { el.uploadInput.click(); });
+    el.uploadInput.addEventListener("change", uploadFile);
+    el.startBtn.addEventListener("click", startTest);
+    el.changeFile.addEventListener("click", function () { flushSave(); showSetup(); });
+
     el.resultButtons.addEventListener("click", function (e) {
       var btn = e.target.closest(".rbtn");
       if (!btn) return;
@@ -403,8 +712,9 @@
     el.jumpNext.addEventListener("click", jumpToNextUntested);
     el.sheetFilter.addEventListener("change", function () { jumpToSheet(el.sheetFilter.value); });
     el.viewToggle.addEventListener("click", function () {
-      showView(state.view === "detail" ? "exec" : "detail");
+      showView((state.view === "detail" || state.view === "preview") ? "exec" : "detail");
     });
+    el.previewBack.addEventListener("click", function () { showView("detail"); });
 
     document.addEventListener("keydown", onKey);
   }
@@ -412,14 +722,13 @@
   function go(delta) {
     var ni = state.index + delta;
     if (ni < 0 || ni >= state.cases.length) return;
-    // 切换前立即保存（如有待保存）
-    flushSave();
+    flushSave(); // 切换前立即保存（如有待保存）
     state.index = ni;
     render();
   }
 
   function onKey(e) {
-    if (state.view === "detail") return; // 详情页不响应执行界面快捷键
+    if (state.view !== "exec") return; // 仅执行界面响应快捷键
     var tag = (e.target.tagName || "").toLowerCase();
     var typing = tag === "input" || tag === "textarea" || tag === "select";
     if (e.key === "ArrowLeft" && !typing) { go(-1); e.preventDefault(); }

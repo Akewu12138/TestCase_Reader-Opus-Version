@@ -14,30 +14,64 @@
       <span id="fileName" class="file-name"></span>
     </div>
     <div class="topbar-right">
-      <button id="viewToggle" class="btn btn-ghost" title="切换测试详情 / 执行界面">测试详情</button>
-      <select id="sheetFilter" class="sheet-select" title="按模块跳转"></select>
-      <button id="jumpNext" class="btn btn-ghost" title="跳到下一条未完成">下一条未测</button>
-      <a id="downloadBtn" class="btn btn-ghost" href="/api/download">下载 Excel</a>
-      <span id="saveStatus" class="save-status"></span>
+      <span id="sessionInfo" class="session-info"></span>
+      <span id="execControls" class="exec-controls">
+        <button id="changeFile" class="btn btn-ghost" title="返回初始页更换用例">更换用例</button>
+        <button id="viewToggle" class="btn btn-ghost" title="切换测试详情 / 执行界面">测试详情</button>
+        <select id="sheetFilter" class="sheet-select" title="按模块跳转"></select>
+        <button id="jumpNext" class="btn btn-ghost" title="跳到下一条未完成">下一条未测</button>
+        <a id="downloadBtn" class="btn btn-ghost" href="/api/download">下载 Excel</a>
+        <span id="saveStatus" class="save-status"></span>
+      </span>
     </div>
   </header>
 
-  <!-- 进度条 -->
-  <div class="progress-wrap">
+  <!-- 进度条（初始页隐藏） -->
+  <div id="progressWrap" class="progress-wrap">
     <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
     <span id="progressText" class="progress-text">0 / 0</span>
   </div>
 
   <!-- 主内容 -->
   <main id="main" class="main">
-    <!-- 加载/空态 -->
-    <section id="loader" class="loader">正在加载测试用例…</section>
+    <!-- 加载态 -->
+    <section id="loader" class="loader">正在加载…</section>
 
-    <!-- 用例卡片（由 JS 渲染填充） -->
+    <!-- 初始配置页 -->
+    <section id="setupView" class="setup-view hidden">
+      <h1 class="setup-title">开始测试</h1>
+      <p class="setup-sub">配置本次测试信息，选择用例文件后开始执行。</p>
+
+      <div class="setup-grid">
+        <label class="field">
+          <span class="field-label">测试阶段</span>
+          <input id="stageInput" class="field-input" type="text" placeholder="如：冒烟测试 / 回归测试 / 验收测试" />
+        </label>
+        <label class="field">
+          <span class="field-label">测试人员</span>
+          <input id="testerInput" class="field-input" type="text" placeholder="你的名字" />
+        </label>
+      </div>
+
+      <div class="setup-files-head">
+        <span class="field-label">测试用例文件</span>
+        <div class="setup-files-actions">
+          <button id="uploadBtn" class="btn btn-ghost btn-small">上传 / 更换文件</button>
+          <input id="uploadInput" type="file" accept=".xlsx,.xls" class="hidden" />
+        </div>
+      </div>
+      <div id="fileList" class="file-list"></div>
+      <div id="setupHint" class="setup-hint"></div>
+
+      <button id="startBtn" class="btn btn-start" disabled>开始测试</button>
+    </section>
+
+    <!-- 用例卡片（功能 / 场景通用，由 JS 控制分区显隐） -->
     <section id="card" class="card hidden">
       <div class="card-head">
         <div class="badges">
           <span id="caseId" class="badge badge-id"></span>
+          <span id="kindTag" class="badge badge-kind"></span>
           <span id="priority" class="badge"></span>
           <span id="risk" class="badge"></span>
           <span id="moduleTag" class="badge badge-module"></span>
@@ -46,17 +80,24 @@
         <div id="scenario" class="case-scenario"></div>
       </div>
 
-      <div class="section">
+      <div id="preconditionSection" class="section">
         <h2 class="section-title">前置条件</h2>
         <div id="precondition" class="section-body"></div>
       </div>
 
-      <div class="section">
+      <!-- 场景讲解（仅场景用例显示） -->
+      <div id="scenarioSection" class="section hidden">
+        <h2 class="section-title">场景讲解</h2>
+        <div id="sceneDesc" class="section-body"></div>
+        <div id="scenarioImages" class="scene-images"></div>
+      </div>
+
+      <div id="stepsSection" class="section">
         <h2 class="section-title">测试步骤</h2>
         <ol id="steps" class="steps-list"></ol>
       </div>
 
-      <div class="section">
+      <div id="expectedSection" class="section">
         <h2 class="section-title">预期结果</h2>
         <div id="expected" class="section-body expected"></div>
       </div>
@@ -112,6 +153,15 @@
         <div id="detailSummary" class="detail-summary"></div>
       </div>
       <div id="sheetGroups" class="sheet-groups"></div>
+    </section>
+
+    <!-- 只读预览页（矩阵 / 信息页，由 JS 渲染填充） -->
+    <section id="previewView" class="preview-view hidden">
+      <div class="preview-head">
+        <button id="previewBack" class="btn btn-ghost btn-small">← 返回详情</button>
+        <h1 id="previewTitle" class="preview-title"></h1>
+      </div>
+      <div id="previewBody" class="preview-body"></div>
     </section>
   </main>
 

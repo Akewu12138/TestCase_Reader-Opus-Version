@@ -295,9 +295,115 @@ body {
 .res-na { background: #eef1f8; color: var(--na); }
 .res-none { background: #f0f2f6; color: #a6adba; }
 
+/* 顶栏会话信息 / 执行控件容器 */
+.session-info { font-size: 13px; color: var(--text-soft); white-space: nowrap; }
+.exec-controls { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* 初始配置页 */
+.setup-view {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 32px 36px;
+  max-width: 720px;
+  margin: 24px auto 0;
+}
+.setup-title { font-size: 26px; margin: 0 0 6px; }
+.setup-sub { color: var(--text-soft); font-size: 15px; margin: 0 0 24px; }
+.setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px; }
+.setup-files-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.setup-files-actions { display: flex; gap: 8px; }
+
+.file-list { display: flex; flex-direction: column; gap: 8px; }
+.file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+.file-item:hover { border-color: var(--primary); background: #f7f9ff; }
+.file-item.selected { border-color: var(--primary); background: #eaeeff; box-shadow: 0 0 0 3px rgba(79,110,247,0.12); }
+.file-item-name { font-weight: 600; color: var(--text); word-break: break-all; }
+.file-item-meta { font-size: 13px; color: var(--text-soft); white-space: nowrap; flex: none; }
+
+.setup-hint { margin: 14px 0 0; font-size: 14px; color: var(--text-soft); min-height: 20px; }
+.setup-hint.warn { color: var(--fail); }
+
+.btn-start {
+  margin-top: 24px;
+  width: 100%;
+  padding: 15px;
+  font-size: 17px;
+  font-weight: 700;
+  border: none;
+}
+.btn-start:disabled { background: #c7ccd6; cursor: not-allowed; opacity: 1; }
+
+/* Sheet 类型徽章 */
+.badge-kind { background: #edeafd; color: #6b4ff7; }
+.badge-kind-scene { background: #e4f4ff; color: #1f7ec2; }
+
+/* 场景示意图 */
+.scene-images { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.scene-img {
+  max-width: 100%;
+  max-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* 只读预览页 */
+.preview-view {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+}
+.preview-head { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 16px; }
+.preview-title { font-size: 22px; margin: 0; }
+.preview-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.preview-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.preview-table th, .preview-table td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+  min-width: 80px;
+}
+.preview-table th { background: #f2f5fc; font-weight: 700; position: sticky; top: 0; }
+.preview-table tr:nth-child(even) td { background: #fafbfe; }
+
+.preview-gallery { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+.preview-fig { margin: 0; max-width: 100%; }
+.preview-fig img { max-width: 100%; max-height: 420px; border: 1px solid var(--border); border-radius: 10px; display: block; }
+.preview-fig figcaption { font-size: 12px; color: var(--text-soft); margin-top: 6px; text-align: center; }
+
+/* 详情页只读预览分组 */
+.sheet-group-header.preview-group { background: #f4f2fb; }
+.sheet-group-header.preview-group:hover { background: #ece8fa; }
+.sg-readonly { background: #edeafd !important; color: #6b4ff7 !important; border-color: #d9d2fb !important; }
+
 @media (max-width: 640px) {
   .card { padding: 20px 18px; }
   .case-title { font-size: 22px; }
   .field-row.two-col { grid-template-columns: 1fr; }
   .detail-view { padding: 18px 16px; }
+  .setup-view { padding: 22px 18px; }
+  .setup-grid { grid-template-columns: 1fr; }
 }
