@@ -35,7 +35,8 @@
     "card", "caseId", "kindTag", "priority", "risk", "moduleTag", "title",
     "scenario", "preconditionSection", "precondition",
     "scenarioSection", "sceneDesc", "scenarioImages",
-    "stepsSection", "steps", "expectedSection", "expected", "resultButtons",
+    "stepsSection", "steps", "expectedSection", "expected", "extrasSection",
+    "extras", "resultButtons",
     "actual", "foundTime", "stampBtn", "clearTimeBtn", "bugId", "tester",
     "note", "prevBtn", "nextBtn", "navCounter", "jumpNext",
     "viewToggle", "detailView", "sheetGroups", "detailSummary", "navbar",
@@ -271,27 +272,33 @@
     setBadge(el.risk, c.risk ? "风险:" + c.risk : "", riskClass(c.risk));
     setBadge(el.moduleTag, c.module, "badge-module");
 
-    // 前置条件（有则显示）
-    el.precondition.textContent = c.precondition || "—";
-    el.preconditionSection.classList.toggle("hidden", !c.precondition && isScenario);
+    // 标题：优先真实用例标题，其次场景名，再次用例名（不再依赖 kind）
+    el.title.textContent = c.title || c.scenario || c.name || "(无标题)";
+    // 副信息：有独立标题时，把场景名作为补充展示
+    el.scenario.textContent = (c.title && c.scenario) ? c.scenario : "";
 
-    if (isScenario) {
-      el.title.textContent = c.scenario || c.name || "(场景)";
-      el.scenario.textContent = c.module || "";
-      el.sceneDesc.textContent = c.desc || c.expected || "—";
-      renderScenarioImages(c.images || []);
-      el.scenarioSection.classList.remove("hidden");
-      el.stepsSection.classList.add("hidden");
-      el.expectedSection.classList.add("hidden");
-    } else {
-      el.title.textContent = c.title || "(无标题)";
-      el.scenario.textContent = c.scenario || "";
-      el.scenarioSection.classList.add("hidden");
-      el.stepsSection.classList.remove("hidden");
-      el.expectedSection.classList.remove("hidden");
-      el.expected.textContent = c.expected || "—";
-      renderSteps(c.steps);
-    }
+    // 以下各区块均“有内容则展示”，不再按 kind 隐藏，确保字段完整呈现
+    // 前置条件
+    el.precondition.textContent = c.precondition || "—";
+    el.preconditionSection.classList.toggle("hidden", !c.precondition);
+
+    // 场景讲解：仅当有场景说明(desc)或示意图时展示（不再拿预期结果顶替）
+    var sceneText = c.desc || "";
+    var hasImgs = !!(c.images && c.images.length);
+    el.sceneDesc.textContent = sceneText || "—";
+    renderScenarioImages(c.images || []);
+    el.scenarioSection.classList.toggle("hidden", !sceneText && !hasImgs);
+
+    // 测试步骤（有内容则展示）
+    var hasSteps = !!(c.steps && String(c.steps).trim());
+    el.stepsSection.classList.toggle("hidden", !hasSteps);
+    if (hasSteps) renderSteps(c.steps);
+
+    // 预期结果（有内容则展示）
+    el.expected.textContent = c.expected || "—";
+    el.expectedSection.classList.toggle("hidden", !c.expected);
+
+    renderExtras(c.extras || []);
 
     // 执行区回显
     setActiveResult(c.result);
@@ -322,6 +329,26 @@
       img.src = src;
       img.alt = "场景示意图";
       el.scenarioImages.appendChild(img);
+    });
+  }
+
+  // 渲染未识别为核心字段的额外列（只读）：header -> value 列表
+  function renderExtras(extras) {
+    el.extras.innerHTML = "";
+    if (!extras || !extras.length) { el.extrasSection.classList.add("hidden"); return; }
+    el.extrasSection.classList.remove("hidden");
+    extras.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "extra-item";
+      var k = document.createElement("span");
+      k.className = "extra-key";
+      k.textContent = item.header;
+      var v = document.createElement("div");
+      v.className = "extra-val";
+      v.textContent = item.value;
+      row.appendChild(k);
+      row.appendChild(v);
+      el.extras.appendChild(row);
     });
   }
 

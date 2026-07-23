@@ -134,6 +134,24 @@ body {
 .steps-list { margin: 0; padding-left: 24px; }
 .steps-list li { margin: 8px 0; font-size: 17px; }
 
+/* 附加信息（未识别为核心字段的额外列，只读） */
+.extras-list { display: flex; flex-direction: column; gap: 10px; }
+.extra-item {
+  display: grid;
+  grid-template-columns: minmax(96px, 160px) 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 14px;
+  background: #f7f9fd;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.extra-key { font-size: 14px; font-weight: 600; color: var(--text-soft); }
+.extra-val { font-size: 16px; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 640px) {
+  .extra-item { grid-template-columns: 1fr; gap: 4px; }
+}
+
 /* 执行区 */
 .exec { padding-top: 20px; }
 .result-buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
