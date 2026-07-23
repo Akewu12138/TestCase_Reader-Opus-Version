@@ -12,6 +12,7 @@ server.log
 
 # IDE / tooling cache
 .qoder/
+.workbuddy/
 
 # 本地真实测试数据（含内部产品信息，不入库）
 场景测试用例/

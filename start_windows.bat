@@ -1,62 +1,114 @@
-@echo off
-REM æµ‹è¯•ç”¨ä¾‹æ‰§è¡Œå™¨ - Windows åŒå‡»å¯åŠ¨å™¨
-REM é¦–æ¬¡è¿è¡Œè‡ªåŠ¨åˆ›å»ºè™šæ‹ŸçŽ¯å¢ƒå¹¶å®‰è£…ä¾èµ–ï¼ŒéšåŽå¯åŠ¨æœåŠ¡å¹¶æ‰“å¼€æµè§ˆå™¨ã€‚
-setlocal
-
-cd /d "%~dp0"
-
-echo ===============================================
-echo   æµ‹è¯•ç”¨ä¾‹æ‰§è¡Œå™¨
-echo   å·¥ä½œç›®å½•: %cd%
-echo ===============================================
-
-REM 1) æ£€æµ‹ python
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [é”™è¯¯] æœªæ‰¾åˆ° pythonï¼Œè¯·å…ˆå®‰è£… Python 3 å¹¶å‹¾é€‰ "Add to PATH"ã€‚
-  echo ä¸‹è½½åœ°å€: https://www.python.org/downloads/
-  pause
-  exit /b 1
-)
-
-set "VENV_DIR=%cd%\.venv"
-set "PY=%VENV_DIR%\Scripts\python.exe"
-
-REM 2) é¦–æ¬¡åˆ›å»ºè™šæ‹ŸçŽ¯å¢ƒå¹¶å®‰è£…ä¾èµ–
-if not exist "%PY%" (
-  echo [åˆå§‹åŒ–] æ­£åœ¨åˆ›å»ºè™šæ‹ŸçŽ¯å¢ƒ .venv ...
-  python -m venv "%VENV_DIR%"
-  echo [åˆå§‹åŒ–] æ­£åœ¨å®‰è£…ä¾èµ–ï¼ˆé¦–æ¬¡è¾ƒæ…¢ï¼Œè¯·ç¨å€™ï¼‰...
-  "%PY%" -m pip install --upgrade pip >nul
-  "%PY%" -m pip install -r "%cd%\requirements.txt"
-) else (
-  REM å·²æœ‰è™šæ‹ŸçŽ¯å¢ƒï¼šä»ç¡®ä¿ä¾èµ–é½å…¨ï¼ˆç”¨äºŽè¡¥é½æ–°å¢žä¾èµ–å¦‚ Pillowï¼‰
-  echo [å°±ç»ª] å·²å­˜åœ¨è™šæ‹ŸçŽ¯å¢ƒï¼Œæ­£åœ¨æ ¡éªŒä¾èµ–...
-  "%PY%" -m pip install -r "%cd%\requirements.txt" >nul 2>&1
-)
-
-REM æœåŠ¡ç«¯å£ï¼ˆå¦‚éœ€ä¿®æ”¹ï¼Œåªæ”¹è¿™é‡Œå³å¯ï¼›app.py ä¼šè¯»å– PORT çŽ¯å¢ƒå˜é‡ï¼‰
-set "PORT=5000"
+@echo off
+REM ============================================================
+REM ²âÊÔÓÃÀýÖ´ÐÐÆ÷ - Windows Ë«»÷Æô¶¯Æ÷£¨½¡×³°æ£©
+REM ÐÞ¸´µã£º
+REM   1) ÓÅÏÈ¸´ÓÃÒÑÓÐ .venv£¬²»ÔÙÇ¿ÖÆÒªÇóÏµÍ³ PATH ÖÐµÄ python
+REM   2) ¶Ë¿Ú³åÍ»Ê±×Ô¶¯´¦Àí£ºÈôÊÇ±¾ÏîÄ¿ÔÚÅÜÔòÖ±½Ó´ò¿ªä¯ÀÀÆ÷¸´ÓÃ£»
+REM      ·ñÔò×Ô¶¯ÇÐ»»µ½¿ÕÏÐ±¸ÓÃ¶Ë¿Ú£¬±ÜÃâ±ÀÀ£
+REM   3) Æô¶¯Ê§°Ü/³¬Ê±¸ø³öÃ÷È·ÌáÊ¾£¬²»ÔÙ¾²Ä¬
+REM ============================================================
+setlocal EnableExtensions
+
+REM ½Å±¾ËùÔÚÄ¿Â¼£¨È¥µô½áÎ²·´Ð±¸ÜÒþ»¼£¬Í³Ò»ÓÃ±äÁ¿ÒýÓÃ£©
+set "BASE=%~dp0"
+if "%BASE:~-1%"=="\" set "BASE=%BASE:~0,-1%"
+cd /d "%BASE%" 2>nul || (echo [´íÎó] ÎÞ·¨ÇÐ»»µ½½Å±¾ËùÔÚÄ¿Â¼ & pause & exit /b 1)
+
+echo ===============================================
+echo   ²âÊÔÓÃÀýÖ´ÐÐÆ÷
+echo   ¹¤×÷Ä¿Â¼: %BASE%
+echo ===============================================
+
+REM ÐéÄâ»·¾³
+set "VENV_DIR=%BASE%\.venv"
+set "PY=%VENV_DIR%\Scripts\python.exe"
+
+REM 1) Èô venv ²»´æÔÚ£¬²ÅÐèÒªÏµÍ³ python À´´´½¨
+if not exist "%PY%" (
+    echo [³õÊ¼»¯] Î´¼ì²âµ½ .venv£¬×¼±¸´´½¨ÐéÄâ»·¾³...
+    set "SYS_PY="
+    for /f "delims=" %%p in ('where python 2^>nul') do (
+        if not defined SYS_PY set "SYS_PY=%%p"
+    )
+    if not defined SYS_PY (
+        echo [´íÎó] Î´ÕÒµ½ python£¬ÇëÏÈ°²×° Python 3 ²¢¹´Ñ¡ "Add to PATH"¡£
+        echo ÏÂÔØµØÖ·: https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+    echo [³õÊ¼»¯] Ê¹ÓÃ %SYS_PY% ´´½¨ÐéÄâ»·¾³...
+    "%SYS_PY%" -m venv "%VENV_DIR%" || (echo [´íÎó] ´´½¨ÐéÄâ»·¾³Ê§°Ü & pause & exit /b 1)
+    echo [³õÊ¼»¯] ÕýÔÚ°²×°ÒÀÀµ£¨Ê×´Î½ÏÂý£¬ÇëÉÔºò£©...
+    "%PY%" -m pip install --upgrade pip
+    "%PY%" -m pip install -r "%BASE%\requirements.txt"
+) else (
+    echo [¾ÍÐ÷] ÒÑ´æÔÚÐéÄâ»·¾³£¬ÕýÔÚÐ£ÑéÒÀÀµ...
+    "%PY%" -m pip install -r "%BASE%\requirements.txt" >nul 2>&1
+)
+
+REM 2) Ñ¡Ôñ¿ÉÓÃ¶Ë¿Ú£¨Ä¬ÈÏ 5000£¬³åÍ»Ê±×Ô¶¯ÇÐ»»£©
+set "PORT=5000"
+call :checkport %PORT%
+if defined PORT_BUSY (
+    REM ÅÐ¶ÏÕ¼ÓÃÕßÊÇ·ñÎª±¾ÏîÄ¿·þÎñ£¨ÄÜ·µ»Ø HTTP 200 ¼´ÊÓÎª±¾ÏîÄ¿£©
+    set "IS_OURS="
+    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:%PORT%/' -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+    if not errorlevel 1 set "IS_OURS=1"
+    if defined IS_OURS (
+        echo [ÌáÊ¾] ¶Ë¿Ú %PORT% ÒÑÓÉ±¾ÏîÄ¿·þÎñÕ¼ÓÃ£¬Ö±½Ó´ò¿ªä¯ÀÀÆ÷¸´ÓÃ¡£
+        goto :open
+    )
+    echo [ÌáÊ¾] ¶Ë¿Ú %PORT% ±»ÆäËû³ÌÐòÕ¼ÓÃ£¬ÕýÔÚÑ°ÕÒ¿ÕÏÐ¶Ë¿Ú...
+    set "PORT=5001"
+)
+:findfree
+call :checkport %PORT%
+if defined PORT_BUSY (
+    set /a PORT+=1
+    if %PORT% gtr 5010 (
+        echo [´íÎó] ÔÚ 5000-5010 ·¶Î§ÄÚÎ´ÕÒµ½¿ÕÏÐ¶Ë¿Ú¡£
+        pause
+        exit /b 1
+    )
+    goto :findfree
+)
+set "URL=http://127.0.0.1:%PORT%"
+
+REM 3) ºóÌ¨Æô¶¯·þÎñ£¨×îÐ¡»¯´°¿Ú£¬¶ÀÁ¢ÔËÐÐ£©
+echo [Æô¶¯] ÕýÔÚÆô¶¯·þÎñ %URL% ...
+start "²âÊÔÓÃÀýÖ´ÐÐÆ÷" /min "%PY%" "%BASE%\app.py"
+
+REM 4) µÈ´ý·þÎñ¾ÍÐ÷ºó´ò¿ªä¯ÀÀÆ÷
+echo [µÈ´ý] µÈ´ý·þÎñ¾ÍÐ÷...
+set "READY="
+for /l %%i in (1,1,40) do (
+    ping -n 2 127.0.0.1 >nul 2>nul
+    powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri '%URL%' -UseBasicParsing -TimeoutSec 1) | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
+    if not errorlevel 1 (
+        set "READY=1"
+        goto :open
+    )
+)
+if not defined READY (
+    echo [´íÎó] ·þÎñÆô¶¯³¬Ê±¡£ÇëÈ·ÈÏÒÀÀµÒÑ°²×°£¬»òÊÖ¶¯ÔËÐÐ£º
+    echo   "%PY%" "%BASE%\app.py"
+    pause
+    exit /b 1
+)
+
+:open
 set "URL=http://127.0.0.1:%PORT%"
-
-REM 3) åŽå°å¯åŠ¨æœåŠ¡
-echo [å¯åŠ¨] æ­£åœ¨å¯åŠ¨æœåŠ¡ %URL% ...
-start "æµ‹è¯•ç”¨ä¾‹æ‰§è¡Œå™¨" /min "%PY%" "%cd%\app.py"
-
-REM 4) ç­‰å¾…æœåŠ¡å°±ç»ªåŽæ‰“å¼€æµè§ˆå™¨
-echo [ç­‰å¾…] ç­‰å¾…æœåŠ¡å°±ç»ª...
-for /l %%i in (1,1,30) do (
-  timeout /t 1 /nobreak >nul
-  powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri '%URL%' -UseBasicParsing -TimeoutSec 1) ^| Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
-  if not errorlevel 1 goto :ready
-)
-:ready
-
-echo [æ‰“å¼€] æ­£åœ¨æ‰“å¼€æµè§ˆå™¨...
-start "" "%URL%"
-
-echo.
-echo æœåŠ¡å·²åœ¨åŽå°å¯åŠ¨ã€‚å…³é—­å¼¹å‡ºçš„æœåŠ¡çª—å£å³å¯åœæ­¢æœåŠ¡ã€‚
-echo.
-pause
-endlocal
+echo [´ò¿ª] ÕýÔÚ´ò¿ªä¯ÀÀÆ÷ %URL% ...
+start "" "%URL%" >nul 2>nul
+echo.
+echo ·þÎñÒÑÔÚºóÌ¨Æô¶¯£¨´°¿Ú±êÌâ£º²âÊÔÓÃÀýÖ´ÐÐÆ÷£©¡£
+echo ¹Ø±Õ¸Ã´°¿Ú¼´¿ÉÍ£Ö¹·þÎñ¡£·ÃÎÊµØÖ·: %URL%
+echo.
+pause
+goto :eof
+
+REM ---------- ×Ó³ÌÐò£º¼ì²âÖ¸¶¨¶Ë¿ÚÊÇ·ñ±»Õ¼ÓÃ ----------
+:checkport
+set "PORT_BUSY="
+for /f "tokens=*" %%a in ('netstat -ano -p tcp 2^>nul ^| findstr /r ":%1[^0-9]"') do set "PORT_BUSY=1"
+exit /b
