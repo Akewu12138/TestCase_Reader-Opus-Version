@@ -24,6 +24,7 @@ from datetime import datetime
 from threading import Lock
 
 import openpyxl
+from openpyxl.cell.cell import MergedCell
 
 HEADER_ACTUAL = "实际现象"
 HEADER_FOUND_TIME = "发现时间"
@@ -423,12 +424,19 @@ def _extract_sheet_images(path):
     return result
 
 
-def _sheet_grid(ws, header_row, max_rows=200, max_cols=30):
-    """把 Sheet 内容读为二维字符串数组（用于只读预览）。"""
+# 预览表格最大列数（矩阵页结果列超出此范围时不提供行内编辑）
+_PREVIEW_MAX_COLS = 30
+
+
+def _sheet_grid(ws, header_row, max_rows=200, max_cols=_PREVIEW_MAX_COLS):
+    """把 Sheet 内容读为行列表（用于预览）。
+
+    每行为 {"r": 真实行号, "cells": [...]}，保留行号以支持矩阵页结果写回定位。
+    """
     start = 1
     row_end = min(ws.max_row, start + max_rows - 1)
     col_end = min(ws.max_column, max_cols)
-    grid = []
+    rows = []
     for r in range(start, row_end + 1):
         row_vals = []
         any_val = False
@@ -438,8 +446,63 @@ def _sheet_grid(ws, header_row, max_rows=200, max_cols=30):
                 any_val = True
             row_vals.append(v)
         if any_val:
-            grid.append(row_vals)
-    return grid
+            rows.append({"r": r, "cells": row_vals})
+    return rows
+
+
+def _matrix_row_fingerprint(ws, row_idx):
+    """矩阵行指纹：该行首个非空单元格文本，用于写回前校验行未错位。"""
+    for col_idx in range(1, min(ws.max_column, 60) + 1):
+        v = _cell_str(ws.cell(row=row_idx, column=col_idx).value)
+        if v:
+            return v
+    return ""
+
+
+def _matrix_result_cols(ws, header_row, max_cols=_PREVIEW_MAX_COLS):
+    """矩阵页全部结果列号（升序）。每列对应一种测试条件，均可行内编辑。
+
+    一列满足任一规则即入选（表头含"备注"的列始终排除）：
+    A. 表头含"结果"/"result"（如 测试结果 / S100测试结果 / 宽路结果）；
+    B. 正文结果 token 命中 ≥ 2，或命中 ≥ 1 且占该列非空正文单元格一半以上
+       （覆盖"避障/乘梯"这类表头为条件名、正文为 通过/失败 的列）。
+    """
+    cols = []
+    row_end = min(ws.max_row, header_row + 200)
+    for col_idx in range(1, min(ws.max_column, max_cols) + 1):
+        htext = _cell_str(ws.cell(row=header_row, column=col_idx).value).lower()
+        if "备注" in htext or "note" in htext:
+            continue
+        if "结果" in htext or "result" in htext:
+            cols.append(col_idx)
+            continue
+        hits = 0
+        non_empty = 0
+        for r in range(header_row + 1, row_end + 1):
+            v = _cell_str(ws.cell(row=r, column=col_idx).value)
+            if not v:
+                continue
+            non_empty += 1
+            if v.upper() in RESULT_TOKENS:
+                hits += 1
+        if hits >= 2 or (hits >= 1 and hits * 2 >= non_empty):
+            cols.append(col_idx)
+    return cols
+
+
+def _anchor_cell(ws, row_idx, col_idx):
+    """若目标位于合并区域，返回其左上角锚点单元格（否则返回自身）。
+
+    直接对 MergedCell 赋值会抛“attribute 'value' is read-only”，
+    矩阵/场景页常见纵向合并结果列，统一写入锚点。
+    """
+    cell = ws.cell(row=row_idx, column=col_idx)
+    if isinstance(cell, MergedCell):
+        for rng in ws.merged_cells.ranges:
+            if (rng.min_row <= row_idx <= rng.max_row
+                    and rng.min_col <= col_idx <= rng.max_col):
+                return ws.cell(row=rng.min_row, column=rng.min_col)
+    return cell
 
 
 def parse_workbook(path):
@@ -452,7 +515,14 @@ def parse_workbook(path):
         progress: {done, total},
     }
     若补齐了新增列表头会自动保存。
+    整个解析（含补列保存）持写锁执行，避免与 update_case 的写回交错
+    导致丢失更新。
     """
+    with _write_lock:
+        return _parse_workbook_unlocked(path)
+
+
+def _parse_workbook_unlocked(path):
     wb = openpyxl.load_workbook(path)
     sheet_images = _extract_sheet_images(path)
 
@@ -529,13 +599,17 @@ def parse_workbook(path):
                     case["images"] = [im["dataUrl"] for im in imgs
                                       if start_row <= im["row"] < end_row]
         else:
-            # matrix / info：只读预览
+            # matrix / info：预览（矩阵页各结果列可行内编辑，其余只读）
             header_row = meta["headerRow"] or 1
+            result_cols = (_matrix_result_cols(ws, header_row)
+                           if meta["kind"] == "matrix" else [])
             previews.append({
                 "sheet": ws.title,
                 "kind": meta["kind"],
                 "title": meta["title"],
-                "grid": _sheet_grid(ws, header_row),
+                "rows": _sheet_grid(ws, header_row),
+                "headerRow": header_row,
+                "resultCols": result_cols,
                 "images": sheet_images.get(ws.title, []),
             })
 
@@ -582,35 +656,81 @@ def make_backup(path, backup_dir):
     return backup_path
 
 
-def update_case(path, sheet, row_index, fields):
+def update_case(path, sheet, row_index, fields, expected_name=None,
+                result_col=None):
     """写回单条用例的执行结果并原子保存。返回最新进度。
 
     fields: dict，键可为 result/bugId/tester/note/actual/foundTime；
     目标列按该 Sheet 的表头动态解析（多结果列时取首个）。
+    matrix 页仅允许写回 result 单字段，需通过 result_col 指明目标结果列
+    （多结果列对应不同测试条件），不补列、不改动其余内容。
+    expected_name: 可选，前端所见的用例名（caseId/标题/场景；矩阵页为
+    行首个非空单元格），用于校验目标行未因外部编辑而错位。
+    校验失败或没有任何字段落地时抛 ValueError。
     """
     with _write_lock:
         wb = openpyxl.load_workbook(path)
-        if sheet not in wb.sheetnames:
-            wb.close()
-            raise ValueError("Sheet 不存在: %s" % sheet)
-        ws = wb[sheet]
-        header_row = _find_header_row(ws)
-        cols = _resolve_columns(ws, header_row) if header_row is not None else {}
-        if header_row is not None:
+        try:
+            if sheet not in wb.sheetnames:
+                raise ValueError("Sheet 不存在: %s" % sheet)
+            ws = wb[sheet]
+            meta = classify_sheet(ws)
+            if meta["kind"] not in ("functional", "scenario", "matrix"):
+                raise ValueError("该 Sheet 为只读页（%s），不支持写回: %s"
+                                 % (meta["kind"], sheet))
+            header_row = meta["headerRow"]
+            cols = meta["columns"]
+            if not (header_row < row_index <= ws.max_row):
+                raise ValueError("目标行号超出范围，文件可能已被外部修改，请刷新页面后重试")
+
+            # 矩阵页：仅写回 result 单字段到指定结果列，行指纹校验后直接落地
+            if meta["kind"] == "matrix":
+                valid_cols = _matrix_result_cols(ws, header_row)
+                if not valid_cols:
+                    raise ValueError("该矩阵页未识别到结果列，不支持编辑")
+                if "result" not in fields:
+                    raise ValueError("矩阵页仅支持修改测试结果")
+                if not result_col:
+                    raise ValueError("矩阵页写回需指定结果列")
+                if result_col not in valid_cols:
+                    raise ValueError("该列不是可编辑的结果列")
+                if expected_name:
+                    fp = _matrix_row_fingerprint(ws, row_index)
+                    if fp != expected_name:
+                        raise ValueError("目标行与页面所见内容不一致（文件可能被外部修改），请刷新页面后重试")
+                value = fields["result"]
+                _anchor_cell(ws, row_index, result_col).value = (
+                    value if value != "" else None)
+                _atomic_save(wb, path)
+                return _compute_progress(wb)
+
             _, cols = _ensure_extra_columns(ws, header_row, cols)
 
-        for key, value in fields.items():
-            if key not in _WRITABLE_FIELDS:
-                continue
-            col = cols.get(key)
-            if not col:
-                continue
-            ws.cell(row=row_index, column=col).value = value if value != "" else None
+            # 校验目标行内容与页面所见一致，防止外部插/删行后写错行
+            if expected_name:
+                def _val(field):
+                    col = cols.get(field)
+                    return _cell_str(ws.cell(row=row_index, column=col).value) if col else ""
+                row_name = _val("caseId") or _val("title") or _val("scenario") or "(未命名)"
+                if row_name != expected_name:
+                    raise ValueError("目标行与页面所见用例不一致（文件可能被外部修改），请刷新页面后重试")
 
-        _atomic_save(wb, path)
-        progress = _compute_progress(wb)
-        wb.close()
-        return progress
+            written = False
+            for key, value in fields.items():
+                if key not in _WRITABLE_FIELDS:
+                    continue
+                col = cols.get(key)
+                if not col:
+                    continue
+                _anchor_cell(ws, row_index, col).value = value if value != "" else None
+                written = True
+            if fields and not written:
+                raise ValueError("未找到可写回的字段列，写回未生效")
+
+            _atomic_save(wb, path)
+            return _compute_progress(wb)
+        finally:
+            wb.close()
 
 
 def _compute_progress(wb):

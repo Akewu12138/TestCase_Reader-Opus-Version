@@ -18,6 +18,7 @@
       <span id="execControls" class="exec-controls">
         <button id="changeFile" class="btn btn-ghost" title="返回初始页更换用例">更换用例</button>
         <button id="viewToggle" class="btn btn-ghost" title="切换测试详情 / 执行界面">测试详情</button>
+        <button id="tableToggle" class="btn btn-ghost" title="切换 表格视图 / 卡片视图">表格视图</button>
         <select id="sheetFilter" class="sheet-select" title="按模块跳转"></select>
         <button id="jumpNext" class="btn btn-ghost" title="跳到下一条未完成">下一条未测</button>
         <a id="downloadBtn" class="btn btn-ghost" href="/api/download">下载 Excel</a>
@@ -57,7 +58,7 @@
         <span class="field-label">测试用例文件</span>
         <div class="setup-files-actions">
           <button id="uploadBtn" class="btn btn-ghost btn-small">上传 / 更换文件</button>
-          <input id="uploadInput" type="file" accept=".xlsx,.xls" class="hidden" />
+          <input id="uploadInput" type="file" accept=".xlsx" class="hidden" />
         </div>
       </div>
       <div id="fileList" class="file-list"></div>
@@ -85,11 +86,17 @@
         <div id="precondition" class="section-body"></div>
       </div>
 
-      <!-- 场景讲解（仅场景用例显示） -->
-      <div id="scenarioSection" class="section hidden">
-        <h2 class="section-title">场景讲解</h2>
-        <div id="sceneDesc" class="section-body"></div>
-        <div id="scenarioImages" class="scene-images"></div>
+      <!-- 场景讲解（仅场景用例显示）：图文混排信息卡片，可折叠 -->
+      <div id="scenarioSection" class="section scene-card hidden">
+        <button id="sceneToggle" class="scene-head" type="button" title="展开 / 收起场景讲解">
+          <span class="scene-icon">🎬</span>
+          <h2 class="section-title">场景讲解</h2>
+          <span id="sceneArrow" class="scene-arrow">▲</span>
+        </button>
+        <div id="sceneBody" class="scene-body">
+          <div id="sceneDesc" class="scene-desc"></div>
+          <div id="scenarioImages" class="scene-images"></div>
+        </div>
       </div>
 
       <div id="stepsSection" class="section">
@@ -152,6 +159,15 @@
       </div>
     </section>
 
+    <!-- 表格视图（当前 Sheet 用例总览，结果列可行内标记） -->
+    <section id="tableView" class="table-view hidden">
+      <div class="table-head">
+        <h1 id="tableTitle" class="table-title"></h1>
+        <div id="tableSummary" class="table-summary"></div>
+      </div>
+      <div id="tableWrap" class="case-table-wrap"></div>
+    </section>
+
     <!-- 测试详情页（按 Sheet 分组，由 JS 渲染填充） -->
     <section id="detailView" class="detail-view hidden">
       <div class="detail-head">
@@ -177,6 +193,15 @@
     <span id="navCounter" class="nav-counter">- / -</span>
     <button id="nextBtn" class="btn btn-nav">下一条 → <kbd>→</kbd></button>
   </footer>
+
+  <!-- 图片灯箱（点击示意图放大预览） -->
+  <div id="lightbox" class="lightbox hidden">
+    <button id="lbClose" class="lb-btn lb-close" title="关闭 (Esc)">×</button>
+    <button id="lbPrev" class="lb-btn lb-prev" title="上一张 (←)">‹</button>
+    <img id="lbImg" class="lb-img" alt="示意图预览" />
+    <button id="lbNext" class="lb-btn lb-next" title="下一张 (→)">›</button>
+    <span id="lbCounter" class="lb-counter"></span>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

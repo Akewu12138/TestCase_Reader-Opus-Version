@@ -14,10 +14,13 @@
     sessionTester: "",       // 会话测试人员（用于预填）
     fileName: "",
     saveTimer: null,
-    view: "setup",           // setup | exec | detail | preview
+    view: "setup",           // setup | exec | table | detail | preview
     expandedSheets: {},       // 详情页各分组展开状态
     detailInited: false,      // 详情页是否已做过首次默认展开
     foundTimeOriginal: "",    // 当前用例发现时间基准值（用于修改确认）
+    preferTable: false,       // 可执行 Sheet 的视图偏好（表格/卡片）
+    lbImages: [],             // 灯箱图片列表
+    lbIndex: 0,               // 灯箱当前图片下标
   };
 
   // 测试结果显示文案与样式
@@ -34,13 +37,15 @@
     "fileList", "setupHint", "startBtn",
     "card", "caseId", "kindTag", "priority", "risk", "moduleTag", "title",
     "scenario", "preconditionSection", "precondition",
-    "scenarioSection", "sceneDesc", "scenarioImages",
+    "scenarioSection", "sceneToggle", "sceneArrow", "sceneBody", "sceneDesc", "scenarioImages",
     "stepsSection", "steps", "expectedSection", "expected", "extrasSection",
     "extras", "resultButtons",
     "actual", "foundTime", "stampBtn", "clearTimeBtn", "bugId", "tester",
     "note", "prevBtn", "nextBtn", "navCounter", "jumpNext",
-    "viewToggle", "detailView", "sheetGroups", "detailSummary", "navbar",
+    "viewToggle", "tableToggle", "detailView", "sheetGroups", "detailSummary", "navbar",
+    "tableView", "tableTitle", "tableSummary", "tableWrap",
     "previewView", "previewBack", "previewTitle", "previewBody",
+    "lightbox", "lbClose", "lbPrev", "lbNext", "lbImg", "lbCounter",
   ];
 
   function $(id) { return document.getElementById(id); }
@@ -102,7 +107,7 @@
 
   // 载入后决定进入哪个视图：有可执行用例进执行页，否则若有预览进详情页
   function enterAfterLoad() {
-    if (state.cases.length > 0) { showView("exec"); }
+    if (state.cases.length > 0) { showView(state.preferTable ? "table" : "exec"); }
     else if (state.previews.length > 0) { showView("detail"); }
     else { showError("该文件未解析到可执行用例或预览内容"); }
   }
@@ -137,7 +142,7 @@
   function renderFileList() {
     el.fileList.innerHTML = "";
     if (!state.files.length) {
-      el.setupHint.textContent = "暂无用例文件，请点击上方按钮上传 .xlsx / .xls 文件。";
+      el.setupHint.textContent = "暂无用例文件，请点击上方按钮上传 .xlsx 文件。";
       el.setupHint.className = "setup-hint warn";
       el.startBtn.disabled = true;
       return;
@@ -221,8 +226,9 @@
 
   /* ---------- 视图切换 ---------- */
   function hideAllViews() {
-    ["setupView", "card", "detailView", "previewView"].forEach(function (k) { el[k].classList.add("hidden"); });
+    ["setupView", "card", "tableView", "detailView", "previewView"].forEach(function (k) { el[k].classList.add("hidden"); });
     el.loader.classList.add("hidden");
+    closeResultMenu();
   }
 
   function showView(view) {
@@ -230,11 +236,13 @@
     hideAllViews();
     var isSetup = view === "setup";
     var isExec = view === "exec";
+    var isTable = view === "table";
     var isDetail = view === "detail";
     var isPreview = view === "preview";
 
     el.setupView.classList.toggle("hidden", !isSetup);
     el.card.classList.toggle("hidden", !isExec);
+    el.tableView.classList.toggle("hidden", !isTable);
     el.detailView.classList.toggle("hidden", !isDetail);
     el.previewView.classList.toggle("hidden", !isPreview);
 
@@ -245,8 +253,13 @@
 
     el.viewToggle.textContent = (isDetail || isPreview) ? "返回执行" : "测试详情";
     el.viewToggle.classList.toggle("active", isDetail || isPreview);
+    // 表格/卡片切换仅在执行类视图可用
+    el.tableToggle.classList.toggle("hidden", !isExec && !isTable);
+    el.tableToggle.textContent = isTable ? "卡片视图" : "表格视图";
+    el.tableToggle.classList.toggle("active", isTable);
 
     if (isExec) { render(); }
+    else if (isTable) { flushSave(); renderTable(); }
     else if (isDetail) {
       flushSave();
       if (!state.detailInited) {
@@ -285,9 +298,12 @@
     // 场景讲解：仅当有场景说明(desc)或示意图时展示（不再拿预期结果顶替）
     var sceneText = c.desc || "";
     var hasImgs = !!(c.images && c.images.length);
-    el.sceneDesc.textContent = sceneText || "—";
+    renderSceneDesc(sceneText);
     renderScenarioImages(c.images || []);
     el.scenarioSection.classList.toggle("hidden", !sceneText && !hasImgs);
+    // 切换用例时默认展开讲解面板
+    el.sceneBody.classList.remove("collapsed");
+    el.sceneArrow.textContent = "▲";
 
     // 测试步骤（有内容则展示）
     var hasSteps = !!(c.steps && String(c.steps).trim());
@@ -319,17 +335,84 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // 场景说明结构化渲染：连续编号行归为有序列表，其余按段落展示（不改写原文）
+  function renderSceneDesc(text) {
+    el.sceneDesc.innerHTML = "";
+    var lines = String(text || "").split(/\r?\n/)
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length > 0; });
+    if (!lines.length) { el.sceneDesc.classList.add("hidden"); return; }
+    el.sceneDesc.classList.remove("hidden");
+    var numRe = /^[\(（]?\d+[\)）]?[.、)．:：]\s*/;
+    var curList = null;
+    lines.forEach(function (line) {
+      if (numRe.test(line)) {
+        if (!curList) {
+          curList = document.createElement("ol");
+          curList.className = "scene-list";
+          el.sceneDesc.appendChild(curList);
+        }
+        var li = document.createElement("li");
+        li.textContent = line.replace(numRe, "");
+        curList.appendChild(li);
+      } else {
+        curList = null;
+        var p = document.createElement("p");
+        p.className = "scene-para";
+        p.textContent = line;
+        el.sceneDesc.appendChild(p);
+      }
+    });
+  }
+
+  // 示意图缩略图网格：点击打开灯箱放大预览
   function renderScenarioImages(images) {
     el.scenarioImages.innerHTML = "";
     if (!images || !images.length) { el.scenarioImages.classList.add("hidden"); return; }
     el.scenarioImages.classList.remove("hidden");
-    images.forEach(function (src) {
+    images.forEach(function (src, idx) {
+      var thumb = document.createElement("button");
+      thumb.type = "button";
+      thumb.className = "scene-thumb";
+      thumb.title = "点击放大查看";
       var img = document.createElement("img");
       img.className = "scene-img";
       img.src = src;
-      img.alt = "场景示意图";
-      el.scenarioImages.appendChild(img);
+      img.alt = "场景示意图 " + (idx + 1);
+      thumb.appendChild(img);
+      thumb.addEventListener("click", function () { openLightbox(images, idx); });
+      el.scenarioImages.appendChild(thumb);
     });
+  }
+
+  /* ---------- 图片灯箱 ---------- */
+  function openLightbox(images, idx) {
+    state.lbImages = images || [];
+    state.lbIndex = idx || 0;
+    if (!state.lbImages.length) return;
+    updateLightbox();
+    el.lightbox.classList.remove("hidden");
+  }
+
+  function updateLightbox() {
+    el.lbImg.src = state.lbImages[state.lbIndex];
+    el.lbCounter.textContent = (state.lbIndex + 1) + " / " + state.lbImages.length;
+    var multi = state.lbImages.length > 1;
+    el.lbPrev.classList.toggle("hidden", !multi);
+    el.lbNext.classList.toggle("hidden", !multi);
+  }
+
+  function closeLightbox() {
+    el.lightbox.classList.add("hidden");
+    el.lbImg.src = "";
+    state.lbImages = [];
+  }
+
+  function lbStep(delta) {
+    var n = state.lbImages.length;
+    if (!n) return;
+    state.lbIndex = (state.lbIndex + delta + n) % n;
+    updateLightbox();
   }
 
   // 渲染未识别为核心字段的额外列（只读）：header -> value 列表
@@ -433,11 +516,30 @@
       opt.textContent = o.title;
       el.sheetFilter.appendChild(opt);
     });
+    // 预览页（矩阵/信息）也可从下拉直达
+    if (state.previews.length) {
+      var group = document.createElement("optgroup");
+      group.label = "场景测试与其他";
+      state.previews.forEach(function (p) {
+        var opt = document.createElement("option");
+        opt.value = p.sheet;
+        opt.textContent = p.title || p.sheet;
+        group.appendChild(opt);
+      });
+      el.sheetFilter.appendChild(group);
+    }
   }
 
   function jumpToSheet(sheet) {
+    // 预览页（矩阵/信息）直接打开预览
+    if (state.previewMap[sheet]) { flushSave(); openPreview(sheet); return; }
     for (var i = 0; i < state.cases.length; i++) {
-      if (state.cases[i].sheet === sheet) { openCase(i); return; }
+      if (state.cases[i].sheet === sheet) {
+        // 表格视图内切换 Sheet 时保持表格视图
+        if (state.view === "table") { state.index = i; renderTable(); }
+        else { openCase(i); }
+        return;
+      }
     }
   }
 
@@ -445,9 +547,221 @@
     var start = state.index;
     for (var k = 1; k <= state.cases.length; k++) {
       var i = (start + k) % state.cases.length;
-      if (!normalizeResult(state.cases[i].result)) { openCase(i); return; }
+      if (!normalizeResult(state.cases[i].result)) {
+        if (state.view === "table") { state.index = i; renderTable(); }
+        else { openCase(i); }
+        return;
+      }
     }
     setSaveStatus("全部用例已完成 🎉", "ok");
+  }
+
+  /* ---------- 结果胶囊与弹出菜单（表格视图 / 矩阵预览共用） ---------- */
+  var resultMenu = null;       // 共享 popover 菜单元素
+  var resultMenuAnchor = null; // 当前锚点胶囊（用于外部点击判定）
+
+  // 创建结果胶囊按钮：展示当前结果，点击弹出选择菜单
+  function makeResultPill(rawResult, onSelect) {
+    var pill = document.createElement("button");
+    pill.type = "button";
+    applyPillState(pill, rawResult);
+    pill.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openResultMenu(pill, function (val) {
+        onSelect(val, pill);
+      });
+    });
+    return pill;
+  }
+
+  // 按结果值更新胶囊文案与配色（未识别的非空文本原样展示为中性色）
+  function applyPillState(pill, rawResult) {
+    var norm = normalizeResult(rawResult);
+    var text = norm ? RESULT_LABEL[norm] : (String(rawResult || "").trim() || "未测");
+    pill.className = "result-pill " + (norm ? RESULT_CLASS[norm] : (rawResult ? "res-other" : "res-none"));
+    pill.textContent = text;
+    pill.title = "点击修改测试结果";
+  }
+
+  function openResultMenu(anchor, onSelect) {
+    if (resultMenuAnchor === anchor) { closeResultMenu(); return; }
+    closeResultMenu();
+    resultMenuAnchor = anchor;
+    resultMenu = document.createElement("div");
+    resultMenu.className = "result-menu";
+    var options = [
+      { val: "PASS", label: "通过", cls: "res-pass" },
+      { val: "FAIL", label: "失败", cls: "res-fail" },
+      { val: "BLOCK", label: "阻塞", cls: "res-block" },
+      { val: "NA", label: "跳过", cls: "res-na" },
+      { val: "", label: "清除", cls: "res-none" },
+    ];
+    options.forEach(function (o) {
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "result-menu-item " + o.cls;
+      item.textContent = o.label;
+      item.addEventListener("click", function (e) {
+        e.stopPropagation();
+        closeResultMenu();
+        onSelect(o.val);
+      });
+      resultMenu.appendChild(item);
+    });
+    document.body.appendChild(resultMenu);
+    // 定位到锚点下方（视口底部放不下时翻到上方）
+    var rect = anchor.getBoundingClientRect();
+    var top = rect.bottom + 6;
+    if (top + resultMenu.offsetHeight > window.innerHeight - 8) {
+      top = rect.top - resultMenu.offsetHeight - 6;
+    }
+    var left = Math.min(rect.left, window.innerWidth - resultMenu.offsetWidth - 8);
+    resultMenu.style.top = (top + window.scrollY) + "px";
+    resultMenu.style.left = (left + window.scrollX) + "px";
+  }
+
+  function closeResultMenu() {
+    if (resultMenu && resultMenu.parentNode) resultMenu.parentNode.removeChild(resultMenu);
+    resultMenu = null;
+    resultMenuAnchor = null;
+  }
+
+  /* ---------- 表格视图（当前 Sheet 用例总览） ---------- */
+  function renderTable() {
+    var cur = state.cases[state.index];
+    if (!cur) return;
+    var sheet = cur.sheet;
+    var items = [];
+    state.cases.forEach(function (c, i) {
+      if (c.sheet === sheet) items.push({ c: c, index: i });
+    });
+
+    el.tableTitle.textContent = cur.sheetTitle || sheet;
+    var done = 0;
+    items.forEach(function (it) { if (normalizeResult(it.c.result)) done++; });
+    el.tableSummary.textContent = "共 " + items.length + " 条用例 · 已完成 " + done +
+      " · 点击编号/标题可进入卡片精确执行";
+
+    el.tableWrap.innerHTML = "";
+    var table = document.createElement("table");
+    table.className = "case-table";
+    var thead = document.createElement("thead");
+    var htr = document.createElement("tr");
+    ["编号", "标题 / 场景", "模块", "优先级", "测试结果", "备注"].forEach(function (h) {
+      var th = document.createElement("th");
+      th.textContent = h;
+      htr.appendChild(th);
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    items.forEach(function (it) {
+      var c = it.c;
+      var tr = document.createElement("tr");
+      if (it.index === state.index) tr.className = "current";
+      if (!normalizeResult(c.result)) tr.classList.add("untested");
+
+      var tdId = document.createElement("td");
+      tdId.className = "ct-id";
+      var idBtn = document.createElement("button");
+      idBtn.type = "button";
+      idBtn.className = "ct-link";
+      idBtn.textContent = c.caseId || c.name || "(无编号)";
+      idBtn.title = "进入卡片视图执行该用例";
+      idBtn.addEventListener("click", function () { openCase(it.index); });
+      tdId.appendChild(idBtn);
+      tr.appendChild(tdId);
+
+      var tdTitle = document.createElement("td");
+      tdTitle.className = "ct-title";
+      var titleBtn = document.createElement("button");
+      titleBtn.type = "button";
+      titleBtn.className = "ct-link";
+      titleBtn.textContent = c.title || c.scenario || "(无标题)";
+      titleBtn.title = "进入卡片视图执行该用例";
+      titleBtn.addEventListener("click", function () { openCase(it.index); });
+      tdTitle.appendChild(titleBtn);
+      tr.appendChild(tdTitle);
+
+      var tdModule = document.createElement("td");
+      tdModule.className = "ct-module";
+      tdModule.textContent = c.module || "";
+      tr.appendChild(tdModule);
+
+      var tdPri = document.createElement("td");
+      tdPri.className = "ct-pri";
+      tdPri.textContent = c.priority || "";
+      tr.appendChild(tdPri);
+
+      var tdRes = document.createElement("td");
+      tdRes.className = "ct-res";
+      var pill = makeResultPill(c.result, function (val, pillEl) {
+        saveCaseResult(it.index, val, pillEl, tr);
+      });
+      tdRes.appendChild(pill);
+      tr.appendChild(tdRes);
+
+      var tdNote = document.createElement("td");
+      tdNote.className = "ct-note";
+      tdNote.textContent = c.note || "";
+      tdNote.title = c.note || "";
+      tr.appendChild(tdNote);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    el.tableWrap.appendChild(table);
+
+    el.sheetFilter.value = sheet;
+    updateProgress();
+  }
+
+  // 表格视图行内标记结果：乐观更新胶囊，失败回滚
+  function saveCaseResult(caseIndex, result, pillEl, rowEl) {
+    var c = state.cases[caseIndex];
+    if (!c) return;
+    var prev = c.result;
+    c.result = result;
+    applyPillState(pillEl, result);
+    rowEl.classList.toggle("untested", !normalizeResult(result));
+    setSaveStatus("正在保存…", "saving");
+    patchCase({ sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name, result: result },
+      function () {
+        var doneNow = 0;
+        var items = state.cases.filter(function (x) { return x.sheet === c.sheet; });
+        items.forEach(function (x) { if (normalizeResult(x.result)) doneNow++; });
+        el.tableSummary.textContent = "共 " + items.length + " 条用例 · 已完成 " + doneNow +
+          " · 点击编号/标题可进入卡片精确执行";
+      },
+      function () {
+        c.result = prev;
+        applyPillState(pillEl, prev);
+        rowEl.classList.toggle("untested", !normalizeResult(prev));
+      });
+  }
+
+  // 通用 PATCH 写回：成功后刷新进度，失败回调 onFail 回滚
+  function patchCase(payload, onOk, onFail) {
+    fetchJSON("/api/cases", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          setSaveStatus(res.d && res.d.error ? res.d.error : "保存失败", "error");
+          if (onFail) onFail();
+          return;
+        }
+        if (res.d.progress) { state.progress = res.d.progress; updateProgress(); }
+        setSaveStatus("已保存 ✓", "ok");
+        if (onOk) onOk();
+      })
+      .catch(function () {
+        setSaveStatus("保存失败", "error");
+        if (onFail) onFail();
+      });
   }
 
   /* ---------- 测试详情页 ---------- */
@@ -555,30 +869,59 @@
     return groupEl;
   }
 
-  /* ---------- 只读预览页 ---------- */
+  /* ---------- 预览页（矩阵各结果列可行内编辑，其余只读） ---------- */
   function openPreview(sheet) {
     var pv = state.previewMap[sheet];
     if (!pv) return;
-    el.previewTitle.textContent = (pv.title || pv.sheet) + "（只读预览）";
+    // 兼容旧后端负载：无 resultCols 时回退到单结果列 resultCol
+    var resultCols = pv.resultCols || (pv.resultCol ? [pv.resultCol] : []);
+    var editable = resultCols.length > 0;
+    el.previewTitle.textContent = (pv.title || pv.sheet) + (editable ? "（结果可编辑）" : "（只读预览）");
     el.previewBody.innerHTML = "";
 
-    var grid = pv.grid || [];
-    if (grid.length) {
+    var rows = pv.rows || [];
+    if (rows.length) {
       var wrap = document.createElement("div");
       wrap.className = "preview-table-wrap";
       var table = document.createElement("table");
       table.className = "preview-table";
-      grid.forEach(function (rowVals, rIdx) {
+      var headerRow = pv.headerRow || (rows[0] && rows[0].r) || 1;
+      // 可编辑结果列的 cells 数组下标集合（每列对应不同测试条件）
+      var editIdx = {};
+      resultCols.forEach(function (col) { editIdx[col - 1] = true; });
+      rows.forEach(function (row) {
+        var isHeader = row.r <= headerRow;
         var tr = document.createElement("tr");
-        rowVals.forEach(function (val) {
-          var cell = document.createElement(rIdx === 0 ? "th" : "td");
-          cell.textContent = val;
+        row.cells.forEach(function (val, cIdx) {
+          var cell = document.createElement(isHeader ? "th" : "td");
+          if (!isHeader && editIdx[cIdx]) {
+            // 结果列：状态胶囊 + 弹出菜单行内编辑
+            cell.className = "pv-res-cell";
+            var pill = makeResultPill(val, function (newVal, pillEl) {
+              saveMatrixResult(pv, row, cIdx, newVal, pillEl);
+            });
+            cell.appendChild(pill);
+          } else {
+            cell.textContent = val;
+            // 非编辑列中的结果关键字也着色，提升矩阵可读性
+            var norm = normalizeResult(val);
+            if (!isHeader && norm && String(val).trim().length <= 6) {
+              cell.className = "pv-res-text " + RESULT_CLASS[norm];
+            }
+          }
           tr.appendChild(cell);
         });
         table.appendChild(tr);
       });
       wrap.appendChild(table);
       el.previewBody.appendChild(wrap);
+
+      if (editable) {
+        var hint = document.createElement("div");
+        hint.className = "preview-hint";
+        hint.textContent = "提示：各结果列（对应不同测试条件）均可点击胶囊标记 通过 / 失败 / 阻塞 / 跳过，修改实时写回 Excel。";
+        el.previewBody.appendChild(hint);
+      }
     }
 
     var images = pv.images || [];
@@ -589,12 +932,15 @@
       gh.className = "section-title";
       gh.textContent = "示意图 (" + images.length + ")";
       el.previewBody.appendChild(gh);
-      images.forEach(function (im) {
+      var urls = images.map(function (im) { return im.dataUrl; });
+      images.forEach(function (im, idx) {
         var fig = document.createElement("figure");
         fig.className = "preview-fig";
         var img = document.createElement("img");
         img.src = im.dataUrl;
         img.alt = "示意图";
+        img.title = "点击放大查看";
+        img.addEventListener("click", function () { openLightbox(urls, idx); });
         var cap = document.createElement("figcaption");
         cap.textContent = im.row ? ("位置 行" + im.row + " 列" + im.col) : "";
         fig.appendChild(img);
@@ -604,7 +950,7 @@
       el.previewBody.appendChild(gallery);
     }
 
-    if (!grid.length && !images.length) {
+    if (!rows.length && !images.length) {
       var empty = document.createElement("div");
       empty.className = "loader";
       empty.textContent = "该 Sheet 无可展示内容";
@@ -612,7 +958,27 @@
     }
 
     showView("preview");
+    el.sheetFilter.value = sheet; // 下拉与当前预览页保持一致
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // 矩阵页结果写回：行首个非空单元格作为行指纹防错位，失败回滚
+  function saveMatrixResult(pv, row, resultIdx, result, pillEl) {
+    var prev = row.cells[resultIdx];
+    var fingerprint = "";
+    for (var i = 0; i < row.cells.length; i++) {
+      if (String(row.cells[i]).trim()) { fingerprint = String(row.cells[i]).trim(); break; }
+    }
+    row.cells[resultIdx] = result;
+    applyPillState(pillEl, result);
+    setSaveStatus("正在保存…", "saving");
+    patchCase({ sheet: pv.sheet, rowIndex: row.r, expectedName: fingerprint,
+                result: result, resultCol: resultIdx + 1 },
+      null,
+      function () {
+        row.cells[resultIdx] = prev;
+        applyPillState(pillEl, prev);
+      });
   }
 
   // 打开指定用例的执行界面
@@ -658,18 +1024,10 @@
     c.tester = fields.tester;
     c.note = fields.note;
 
-    var payload = Object.assign({ sheet: c.sheet, rowIndex: c.rowIndex }, fields);
-    fetchJSON("/api/cases", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (res) {
-        if (!res.ok) { setSaveStatus("保存失败", "error"); return; }
-        if (res.d.progress) { state.progress = res.d.progress; updateProgress(); }
-        setSaveStatus("已保存 ✓", "ok");
-      })
-      .catch(function () { setSaveStatus("保存失败", "error"); });
+    // expectedName 用于后端校验目标行未因外部编辑而错位
+    var payload = Object.assign(
+      { sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name }, fields);
+    patchCase(payload);
   }
 
   function setSaveStatus(text, kind) {
@@ -739,9 +1097,37 @@
     el.jumpNext.addEventListener("click", jumpToNextUntested);
     el.sheetFilter.addEventListener("change", function () { jumpToSheet(el.sheetFilter.value); });
     el.viewToggle.addEventListener("click", function () {
-      showView((state.view === "detail" || state.view === "preview") ? "exec" : "detail");
+      if (state.view === "detail" || state.view === "preview") {
+        showView(state.preferTable ? "table" : "exec");
+      } else {
+        showView("detail");
+      }
     });
     el.previewBack.addEventListener("click", function () { showView("detail"); });
+
+    // 表格/卡片视图切换（偏好记入 state，切 Sheet 后保持）
+    el.tableToggle.addEventListener("click", function () {
+      state.preferTable = state.view !== "table";
+      showView(state.preferTable ? "table" : "exec");
+    });
+
+    // 场景讲解折叠面板
+    el.sceneToggle.addEventListener("click", function () {
+      var collapsed = el.sceneBody.classList.toggle("collapsed");
+      el.sceneArrow.textContent = collapsed ? "▼" : "▲";
+    });
+
+    // 图片灯箱
+    el.lbClose.addEventListener("click", closeLightbox);
+    el.lbPrev.addEventListener("click", function (e) { e.stopPropagation(); lbStep(-1); });
+    el.lbNext.addEventListener("click", function (e) { e.stopPropagation(); lbStep(1); });
+    el.lightbox.addEventListener("click", function (e) {
+      if (e.target === el.lightbox) closeLightbox(); // 点击遮罩关闭
+    });
+
+    // 点击菜单外部 / 页面滚动时关闭结果菜单
+    document.addEventListener("click", closeResultMenu);
+    window.addEventListener("scroll", closeResultMenu, true);
 
     document.addEventListener("keydown", onKey);
   }
@@ -755,6 +1141,14 @@
   }
 
   function onKey(e) {
+    // 灯箱打开时优先响应：Esc 关闭，左右切图
+    if (!el.lightbox.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeLightbox(); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { lbStep(-1); e.preventDefault(); }
+      else if (e.key === "ArrowRight") { lbStep(1); e.preventDefault(); }
+      return;
+    }
+    if (e.key === "Escape" && resultMenu) { closeResultMenu(); return; }
     if (state.view !== "exec") return; // 仅执行界面响应快捷键
     var tag = (e.target.tagName || "").toLowerCase();
     var typing = tag === "input" || tag === "textarea" || tag === "select";

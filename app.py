@@ -24,7 +24,8 @@ BACKUP_DIR = os.path.join(UPLOAD_DIR, "backups")
 # 旧版根目录默认文件：仅用于首次向 testing 目录播种，保证历史进度延续
 LEGACY_EXCEL = os.path.join(BASE_DIR, "多机测试用例_合并版.xlsx")
 
-ALLOWED_EXT = (".xlsx", ".xls")
+# 仅支持 .xlsx：openpyxl 无法读取旧版 .xls（BIFF）格式，放行只会在解析时报错
+ALLOWED_EXT = (".xlsx",)
 
 app = Flask(__name__, static_folder=None)
 
@@ -67,6 +68,9 @@ def _list_testing_files():
     for name in os.listdir(TESTING_DIR):
         if not name.lower().endswith(ALLOWED_EXT):
             continue
+        if name.startswith("~$"):
+            # Excel 打开文件时生成的锁文件，并非真实用例文件
+            continue
         full = os.path.join(TESTING_DIR, name)
         try:
             st = os.stat(full)
@@ -94,6 +98,8 @@ def _resolve_testing_path(file_name):
     """将文件名解析为 testing 目录下的合法绝对路径，防止路径穿越。"""
     name = _safe_name(file_name)
     if not name or not name.lower().endswith(ALLOWED_EXT):
+        return None
+    if name.startswith("~$"):
         return None
     path = os.path.join(TESTING_DIR, name)
     if os.path.abspath(os.path.dirname(path)) != os.path.abspath(TESTING_DIR):
@@ -139,7 +145,7 @@ def upload():
     if not file.filename:
         return jsonify({"error": "文件名为空"}), 400
     if not file.filename.lower().endswith(ALLOWED_EXT):
-        return jsonify({"error": "仅支持 .xlsx/.xls 文件"}), 400
+        return jsonify({"error": "仅支持 .xlsx 文件（.xls 请先用 Excel 另存为 .xlsx）"}), 400
 
     _ensure_dirs()
     filename = _safe_name(file.filename) or "working.xlsx"
@@ -196,8 +202,17 @@ def patch_case():
     path = STATE["current_path"]
     if not path or not os.path.exists(path):
         return jsonify({"error": "当前文件不存在"}), 404
+    # 矩阵页多结果列：透传目标结果列号（functional/scenario 路径忽略）
+    result_col = data.get("resultCol")
+    if not isinstance(result_col, int):
+        result_col = None
     try:
-        progress = excel_service.update_case(path, sheet, row_index, fields)
+        progress = excel_service.update_case(
+            path, sheet, row_index, fields,
+            expected_name=data.get("expectedName") or None,
+            result_col=result_col)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"error": "写回失败: %s" % exc}), 500
     return jsonify({"ok": True, "progress": progress})
