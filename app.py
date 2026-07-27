@@ -14,18 +14,22 @@ import shutil
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 import excel_service
+import format_converter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 TESTING_DIR = os.path.join(UPLOAD_DIR, "testing")
 BACKUP_DIR = os.path.join(UPLOAD_DIR, "backups")
+ORIGINALS_DIR = os.path.join(UPLOAD_DIR, "originals")
 
 # 旧版根目录默认文件：仅用于首次向 testing 目录播种，保证历史进度延续
 LEGACY_EXCEL = os.path.join(BASE_DIR, "多机测试用例_合并版.xlsx")
 
-# 仅支持 .xlsx：openpyxl 无法读取旧版 .xls（BIFF）格式，放行只会在解析时报错
+# testing 目录内只存 .xlsx；其他格式上传时自动转换（原件留档 originals）
 ALLOWED_EXT = (".xlsx",)
+CONVERT_EXT = format_converter.CONVERTIBLE_EXT
+SUPPORTED_LABEL = "xlsx / xlsm / xls / csv / md / xmind"
 
 app = Flask(__name__, static_folder=None)
 
@@ -144,11 +148,33 @@ def upload():
     file = request.files["file"]
     if not file.filename:
         return jsonify({"error": "文件名为空"}), 400
-    if not file.filename.lower().endswith(ALLOWED_EXT):
-        return jsonify({"error": "仅支持 .xlsx 文件（.xls 请先用 Excel 另存为 .xlsx）"}), 400
+    lower = file.filename.lower()
+    ext = os.path.splitext(lower)[1]
+    if not lower.endswith(ALLOWED_EXT + CONVERT_EXT):
+        return jsonify({"error": "不支持 %s 格式，当前支持：%s"
+                        % (ext or "该", SUPPORTED_LABEL)}), 400
 
     _ensure_dirs()
-    filename = _safe_name(file.filename) or "working.xlsx"
+    filename = _safe_name(file.filename) or ("working" + (ext or ".xlsx"))
+
+    # 非 xlsx：原件留档 originals，转换产物同名 .xlsx 存入 testing
+    if lower.endswith(CONVERT_EXT):
+        os.makedirs(ORIGINALS_DIR, exist_ok=True)
+        original_path = os.path.join(ORIGINALS_DIR, filename)
+        file.save(original_path)
+        xlsx_name = os.path.splitext(filename)[0] + ".xlsx"
+        save_path = os.path.join(TESTING_DIR, xlsx_name)
+        try:
+            format_converter.convert_to_xlsx(original_path, save_path)
+        except ValueError as exc:
+            return jsonify({"error": "转换失败：%s" % exc}), 400
+        except Exception as exc:
+            app.logger.exception("转换失败")
+            return jsonify({"error": "转换失败：%s" % exc}), 400
+        return jsonify({"files": _list_testing_files(), "uploaded": xlsx_name,
+                        "converted": True,
+                        "hint": "已自动转换为 xlsx，原件已备份至 uploads/originals"})
+
     if not filename.lower().endswith(ALLOWED_EXT):
         filename += ".xlsx"
     save_path = os.path.join(TESTING_DIR, filename)

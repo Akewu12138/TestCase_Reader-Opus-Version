@@ -45,6 +45,7 @@
     "viewToggle", "tableToggle", "detailView", "sheetGroups", "detailSummary", "navbar",
     "tableView", "tableTitle", "tableSummary", "tableWrap",
     "previewView", "previewBack", "previewTitle", "previewBody",
+    "readerMask", "readerPanel", "readerCol", "readerRow", "readerBody", "readerClose",
     "lightbox", "lbClose", "lbPrev", "lbNext", "lbImg", "lbCounter",
   ];
 
@@ -182,12 +183,25 @@
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
   }
 
+  // 支持上传的扩展名（非 xlsx 由后端自动转换）
+  var UPLOAD_EXTS = [".xlsx", ".xlsm", ".xls", ".csv", ".md", ".xmind"];
+  var UPLOAD_LABEL = "xlsx / xlsm / xls / csv / md / xmind";
+
   function uploadFile() {
     var f = el.uploadInput.files && el.uploadInput.files[0];
     if (!f) return;
+    // 本地先校验扩展名：不兼容格式立即红色警告，不发请求
+    var dot = f.name.lastIndexOf(".");
+    var ext = dot >= 0 ? f.name.slice(dot).toLowerCase() : "";
+    if (UPLOAD_EXTS.indexOf(ext) < 0) {
+      el.setupHint.textContent = "不支持 " + (ext || "无后缀") + " 格式，当前支持：" + UPLOAD_LABEL;
+      el.setupHint.className = "setup-hint warn";
+      el.uploadInput.value = "";
+      return;
+    }
     var fd = new FormData();
     fd.append("file", f);
-    el.setupHint.textContent = "正在上传…";
+    el.setupHint.textContent = ext === ".xlsx" ? "正在上传…" : "正在上传并转换为 xlsx…";
     el.setupHint.className = "setup-hint";
     fetchJSON("/api/upload", { method: "POST", body: fd })
       .then(function (res) {
@@ -195,6 +209,10 @@
         state.files = res.d.files || [];
         state.selectedFile = res.d.uploaded || (state.files[0] && state.files[0].name);
         renderFileList();
+        if (res.d.converted) {
+          el.setupHint.textContent = res.d.hint || "已自动转换为 xlsx，原件已备份";
+          el.setupHint.className = "setup-hint ok";
+        }
       })
       .catch(function () { el.setupHint.textContent = "上传失败"; el.setupHint.className = "setup-hint warn"; })
       .then(function () { el.uploadInput.value = ""; });
@@ -704,8 +722,14 @@
 
       var tdNote = document.createElement("td");
       tdNote.className = "ct-note";
-      tdNote.textContent = c.note || "";
-      tdNote.title = c.note || "";
+      var noteText = c.note || "";
+      if (noteText.trim().length > LONG_TEXT_MIN) {
+        // 长备注：与预览页同套 3 行折叠 + 全文侧栏
+        fillLongTextCell(tdNote, noteText, "备注", c.caseId || c.title || c.name || "");
+      } else {
+        tdNote.textContent = noteText;
+        tdNote.title = noteText;
+      }
       tr.appendChild(tdNote);
 
       tbody.appendChild(tr);
@@ -869,6 +893,60 @@
     return groupEl;
   }
 
+  /* ---------- 表格长文本：3 行折叠 + 聚焦阅读侧栏 ---------- */
+  var LONG_TEXT_MIN = 60;   // 超过此长度的单元格折叠为 3 行
+  var LONG_COL_MIN = 30;    // 列内最大长度超过此值视为长文本列（加宽）
+  var readerFocusRow = null; // 侧栏打开时高亮的行
+
+  // 长文本单元格：默认 3 行折叠，单击展开/收起，角标打开全文侧栏
+  function fillLongTextCell(cell, text, colName, rowLabel) {
+    var box = document.createElement("div");
+    box.className = "pv-clamp";
+    var span = document.createElement("span");
+    span.className = "pv-clamp-text";
+    span.textContent = text;
+    box.appendChild(span);
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pv-full-btn";
+    btn.textContent = "⤢";
+    btn.title = "查看全文";
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openReader(colName, rowLabel, text, cell.parentElement);
+    });
+    box.appendChild(btn);
+    cell.classList.add("pv-longcell");
+    cell.title = "单击展开 / 收起";
+    cell.addEventListener("click", function () {
+      cell.classList.toggle("pv-expanded");
+    });
+    cell.addEventListener("dblclick", function () {
+      openReader(colName, rowLabel, text, cell.parentElement);
+    });
+    cell.appendChild(box);
+  }
+
+  // 聚焦阅读侧栏：单焦点展示列名 + 行上下文 + 全文
+  function openReader(colName, rowLabel, text, rowEl) {
+    closeReader();
+    el.readerCol.textContent = colName || "内容";
+    el.readerRow.textContent = rowLabel || "";
+    el.readerBody.textContent = text;
+    el.readerMask.classList.remove("hidden");
+    el.readerPanel.classList.remove("hidden");
+    if (rowEl && rowEl.tagName === "TR") {
+      rowEl.classList.add("row-focus");
+      readerFocusRow = rowEl;
+    }
+  }
+
+  function closeReader() {
+    el.readerMask.classList.add("hidden");
+    el.readerPanel.classList.add("hidden");
+    if (readerFocusRow) { readerFocusRow.classList.remove("row-focus"); readerFocusRow = null; }
+  }
+
   /* ---------- 预览页（矩阵各结果列可行内编辑，其余只读） ---------- */
   function openPreview(sheet) {
     var pv = state.previewMap[sheet];
@@ -889,11 +967,31 @@
       // 可编辑结果列的 cells 数组下标集合（每列对应不同测试条件）
       var editIdx = {};
       resultCols.forEach(function (col) { editIdx[col - 1] = true; });
+
+      // 扫描各列最大文本长度与表头名：长文本列加宽，避免“一字一行”
+      var colMax = [];
+      var colNames = [];
+      rows.forEach(function (row) {
+        row.cells.forEach(function (val, cIdx) {
+          var len = String(val || "").length;
+          if (!colMax[cIdx] || len > colMax[cIdx]) colMax[cIdx] = len;
+          if (row.r <= headerRow && !colNames[cIdx] && String(val).trim()) {
+            colNames[cIdx] = String(val).trim();
+          }
+        });
+      });
+
       rows.forEach(function (row) {
         var isHeader = row.r <= headerRow;
         var tr = document.createElement("tr");
+        // 行上下文：首个非空单元格（与写回行指纹同口径）
+        var rowLabel = "";
+        for (var i = 0; i < row.cells.length; i++) {
+          if (String(row.cells[i]).trim()) { rowLabel = String(row.cells[i]).trim(); break; }
+        }
         row.cells.forEach(function (val, cIdx) {
           var cell = document.createElement(isHeader ? "th" : "td");
+          if (colMax[cIdx] > LONG_COL_MIN) cell.classList.add("pv-col-long");
           if (!isHeader && editIdx[cIdx]) {
             // 结果列：状态胶囊 + 弹出菜单行内编辑
             cell.className = "pv-res-cell";
@@ -901,6 +999,9 @@
               saveMatrixResult(pv, row, cIdx, newVal, pillEl);
             });
             cell.appendChild(pill);
+          } else if (!isHeader && String(val).trim().length > LONG_TEXT_MIN) {
+            // 长文本：3 行折叠 + 全文侧栏
+            fillLongTextCell(cell, val, colNames[cIdx], rowLabel);
           } else {
             cell.textContent = val;
             // 非编辑列中的结果关键字也着色，提升矩阵可读性
@@ -1125,6 +1226,10 @@
       if (e.target === el.lightbox) closeLightbox(); // 点击遮罩关闭
     });
 
+    // 长文本阅读侧栏：关闭按钮 / 遮罩点击均退出
+    el.readerClose.addEventListener("click", closeReader);
+    el.readerMask.addEventListener("click", closeReader);
+
     // 点击菜单外部 / 页面滚动时关闭结果菜单
     document.addEventListener("click", closeResultMenu);
     window.addEventListener("scroll", closeResultMenu, true);
@@ -1141,6 +1246,11 @@
   }
 
   function onKey(e) {
+    // 阅读侧栏打开时：Esc 关闭（单焦点，优先响应）
+    if (!el.readerPanel.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeReader(); e.preventDefault(); }
+      return;
+    }
     // 灯箱打开时优先响应：Esc 关闭，左右切图
     if (!el.lightbox.classList.contains("hidden")) {
       if (e.key === "Escape") { closeLightbox(); e.preventDefault(); }

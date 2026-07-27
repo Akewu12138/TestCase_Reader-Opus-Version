@@ -3,3 +3,5 @@ openpyxl>=3.0
 # Pillow 必需：openpyxl 只有在安装 Pillow 时才会读取并回写内嵌图片，
 # 否则加载即丢弃图片、保存时会抹掉示意图（导致场景/矩阵预览无图且原文件损坏）。
 Pillow>=9.0
+# xlrd 仅用于读取旧版 .xls（上传时自动转换为 .xlsx）
+xlrd==2.0.1
