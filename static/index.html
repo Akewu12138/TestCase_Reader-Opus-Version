@@ -21,6 +21,7 @@
         <button id="tableToggle" class="btn btn-ghost" title="切换 表格视图 / 卡片视图">表格视图</button>
         <select id="roundSelect" class="sheet-select round-select" title="选择本轮测试结果写入列"></select>
         <button id="newRoundBtn" class="btn btn-ghost" title="在所有用例 Sheet 新建结果列（开启新一轮测试）">＋新建列</button>
+        <button id="filterToggle" class="btn btn-ghost" title="筛选用例（激活后仅执行匹配的用例）">筛选</button>
         <select id="sheetFilter" class="sheet-select" title="按模块跳转"></select>
         <button id="jumpNext" class="btn btn-ghost" title="跳到下一条未完成">下一条未测</button>
         <a id="downloadBtn" class="btn btn-ghost" href="/api/download">下载 Excel</a>
@@ -34,6 +35,68 @@
     <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
     <span id="progressText" class="progress-text">0 / 0</span>
   </div>
+
+  <!-- 筛选面板（激活后全局工作集收窄：导航/进度/表格/详情只作用于匹配用例） -->
+  <section id="filterPanel" class="filter-panel hidden">
+    <div class="filter-row">
+      <label class="filter-group filter-kw">
+        <span class="filter-group-label">关键词</span>
+        <input id="filterKeyword" class="field-input filter-input" type="text"
+               placeholder="编号 / 标题 / 模块 / 步骤 / 备注…" />
+      </label>
+      <label class="filter-group">
+        <span class="filter-group-label">编号范围</span>
+        <span class="filter-id-range">
+          <input id="filterIdFrom" class="field-input filter-input filter-id" type="text" placeholder="起 如 1" />
+          <span class="filter-id-sep">—</span>
+          <input id="filterIdTo" class="field-input filter-input filter-id" type="text" placeholder="止 如 50" />
+        </span>
+      </label>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <span class="filter-group-label">状态</span>
+        <span id="filterStatuses" class="filter-chips"></span>
+      </div>
+      <label class="filter-group">
+        <span class="filter-group-label">参照列</span>
+        <select id="filterRefCol" class="sheet-select filter-ref" title="状态筛选依据哪个结果列判断"></select>
+      </label>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <span class="filter-group-label">优先级</span>
+        <span id="filterPriorities" class="filter-chips"></span>
+      </div>
+      <div class="filter-group">
+        <span class="filter-group-label">风险</span>
+        <span id="filterRisks" class="filter-chips"></span>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <span class="filter-group-label">模块</span>
+        <span id="filterModules" class="filter-chips"></span>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <span class="filter-group-label">Sheet</span>
+        <span id="filterSheets" class="filter-chips"></span>
+      </div>
+    </div>
+    <div class="filter-row filter-row-bottom">
+      <div class="filter-group">
+        <span class="filter-group-label">预设</span>
+        <span id="filterPresets" class="filter-chips"></span>
+      </div>
+      <span class="filter-actions">
+        <button id="filterSaveBtn" class="btn btn-ghost btn-small">保存为预设</button>
+        <button id="filterClearBtn" class="btn btn-ghost btn-small">清除全部</button>
+        <span id="filterCount" class="filter-count"></span>
+      </span>
+    </div>
+  </section>
 
   <!-- 主内容 -->
   <main id="main" class="main">
@@ -160,6 +223,9 @@
         </label>
       </div>
     </section>
+
+    <!-- 筛选空态（当前筛选条件下无匹配用例） -->
+    <section id="filterEmpty" class="loader hidden">当前筛选条件下无匹配用例，请调整或清除筛选条件。</section>
 
     <!-- 表格视图（当前 Sheet 用例总览，结果列可行内标记） -->
     <section id="tableView" class="table-view hidden">

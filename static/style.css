@@ -715,6 +715,87 @@ body {
 .sheet-group-header.preview-group:hover { background: #ece8fa; }
 .sg-readonly { background: #edeafd !important; color: #6b4ff7 !important; border-color: #d9d2fb !important; }
 
+/* ---------- 用例筛选面板 ---------- */
+.filter-panel {
+  max-width: 860px;
+  margin: 0 auto 8px;
+  padding: 14px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.filter-row { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-start; }
+.filter-row-bottom { align-items: center; border-top: 1px dashed var(--border); padding-top: 10px; }
+.filter-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.filter-group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.filter-kw { flex: 1; min-width: 220px; }
+.filter-input { padding: 7px 10px; font-size: 14px; width: auto; }
+.filter-kw .filter-input { width: 100%; }
+.filter-id { width: 90px; }
+.filter-id-range { display: flex; align-items: center; gap: 6px; }
+.filter-id-sep { color: var(--text-soft); }
+.filter-ref { max-width: 200px; }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 筛选胶囊：可切换选中态 */
+.filter-chip {
+  font-size: 13px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.filter-chip:hover { border-color: var(--primary); color: var(--primary); }
+.filter-chip.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* 预设胶囊：内置为紫色系；用户预设含名称 + 删除按钮 */
+.preset-chip { display: inline-flex; align-items: center; gap: 0; padding: 0; overflow: hidden; }
+.preset-chip.preset-builtin {
+  padding: 4px 12px;
+  background: #edeafd;
+  border-color: #d9d2fb;
+  color: #6b4ff7;
+}
+.preset-chip.preset-builtin:hover { background: #6b4ff7; border-color: #6b4ff7; color: #fff; }
+.preset-apply {
+  border: none;
+  background: none;
+  font-size: 13px;
+  padding: 4px 6px 4px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.preset-apply:hover { color: var(--primary); }
+.preset-del {
+  border: none;
+  background: none;
+  font-size: 14px;
+  padding: 4px 10px 4px 4px;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.preset-del:hover { color: var(--fail); }
+
+.filter-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.filter-count { font-size: 13px; color: var(--text-soft); white-space: nowrap; }
+
 @media (max-width: 640px) {
   .card { padding: 20px 18px; }
   .case-title { font-size: 22px; }

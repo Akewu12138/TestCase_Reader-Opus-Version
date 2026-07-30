@@ -23,6 +23,8 @@
     lbIndex: 0,               // 灯箱当前图片下标
     resultColumns: {},        // sheet -> 结果列表头名列表（测试轮次候选）
     selectedRound: "",        // 当前选中的结果列表头名（全局工作模式）
+    filter: emptyFilter(),    // 筛选条件（激活后全局工作集收窄）
+    filterOpen: false,        // 筛选面板开合状态
   };
 
   // 测试结果显示文案与样式
@@ -35,6 +37,10 @@
   var IDS = [
     "fileName", "sessionInfo", "execControls", "changeFile", "sheetFilter",
     "roundSelect", "newRoundBtn",
+    "filterToggle", "filterPanel", "filterKeyword", "filterIdFrom", "filterIdTo",
+    "filterStatuses", "filterRefCol", "filterPriorities", "filterModules",
+    "filterSheets", "filterRisks", "filterPresets", "filterSaveBtn",
+    "filterClearBtn", "filterCount", "filterEmpty",
     "saveStatus", "progressWrap", "progressFill", "progressText", "loader",
     "setupView", "stageInput", "testerInput", "uploadBtn", "uploadInput",
     "fileList", "setupHint", "startBtn",
@@ -99,6 +105,9 @@
     state.fileName = d.fileName || "";
     state.resultColumns = d.resultColumns || {};
     state.selectedRound = "";   // 换文件后重置，renderRoundSelect 取默认首列
+    state.filter = emptyFilter();  // 换文件后筛选清空
+    state.filterOpen = false;
+    invalidateFilter();
     state.index = 0;
     state.detailInited = false;
     state.expandedSheets = {};
@@ -110,6 +119,7 @@
     el.sessionInfo.textContent = parts.join("  ·  ");
     buildSheetFilter();
     renderRoundSelect();
+    renderFilterPanel();
   }
 
   // 载入后决定进入哪个视图：有可执行用例进执行页，否则若有预览进详情页
@@ -252,6 +262,7 @@
   function hideAllViews() {
     ["setupView", "card", "tableView", "detailView", "previewView"].forEach(function (k) { el[k].classList.add("hidden"); });
     el.loader.classList.add("hidden");
+    el.filterEmpty.classList.add("hidden");
     closeResultMenu();
   }
 
@@ -282,8 +293,16 @@
     el.tableToggle.textContent = isTable ? "卡片视图" : "表格视图";
     el.tableToggle.classList.toggle("active", isTable);
 
-    if (isExec) { render(); }
-    else if (isTable) { flushSave(); renderTable(); }
+    if (isExec) {
+      // 筛选后可见工作集为空：以空态替代卡片
+      if (filterActive() && !visibleIndices().length) { showFilterEmpty(); }
+      else { render(); }
+    }
+    else if (isTable) {
+      flushSave();
+      if (filterActive() && !visibleIndices().length) { showFilterEmpty(); }
+      else { renderTable(); }
+    }
     else if (isDetail) {
       flushSave();
       if (!state.detailInited) {
@@ -350,10 +369,21 @@
     el.tester.value = c.tester || state.sessionTester || "";
     el.note.value = c.note || "";
 
-    // 导航状态
-    el.navCounter.textContent = (state.index + 1) + " / " + state.cases.length;
-    el.prevBtn.disabled = state.index === 0;
-    el.nextBtn.disabled = state.index === state.cases.length - 1;
+    // 导航状态（筛选激活时在可见工作集内计数与禁用）
+    var vis = visibleIndices();
+    var pos = vis.indexOf(state.index);
+    if (filterActive()) {
+      el.navCounter.textContent = (pos >= 0 ? (pos + 1) : "·") + " / " + vis.length + "（筛选中）";
+    } else {
+      el.navCounter.textContent = (state.index + 1) + " / " + state.cases.length;
+    }
+    var hasPrev = false, hasNext = false;
+    vis.forEach(function (i) {
+      if (i < state.index) hasPrev = true;
+      else if (i > state.index) hasNext = true;
+    });
+    el.prevBtn.disabled = !hasPrev;
+    el.nextBtn.disabled = !hasNext;
     el.sheetFilter.value = c.sheet;
     updateRoundWarn();
     updateProgress();
@@ -563,6 +593,8 @@
     } else {
       c.result = val;
     }
+    // 状态筛选激活时结果写入会改变匹配口径：仅失效缓存，不移动当前用例
+    if (state.filter.statuses.length) invalidateFilter();
   }
 
   // 渲染顶栏轮次选择器：并集选项 + 默认首列 + 缺失警示
@@ -598,11 +630,12 @@
       : "选择本轮测试结果写入列";
   }
 
-  // 进度按当前选中列本地统计（done=该列非空的用例数，与后端主列口径一致）
+  // 进度按当前选中列统计；筛选激活时只统计可见工作集
   function computeLocalProgress() {
+    var vis = visibleIndices();
     var done = 0;
-    state.cases.forEach(function (c) { if (caseResult(c)) done++; });
-    state.progress = { done: done, total: state.cases.length };
+    vis.forEach(function (i) { if (caseResult(state.cases[i])) done++; });
+    state.progress = { done: done, total: vis.length };
   }
 
   function updateProgress() {
@@ -610,7 +643,341 @@
     var p = state.progress;
     var pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
     el.progressFill.style.width = pct + "%";
-    el.progressText.textContent = "已完成 " + p.done + " / " + p.total + " (" + pct + "%)";
+    el.progressText.textContent = "已完成 " + p.done + " / " + p.total + " (" + pct + "%)" +
+      (filterActive() ? "（筛选）" : "");
+    updateFilterBar();
+  }
+
+  /* ---------- 用例筛选（筛选工作集模式，纯前端） ---------- */
+  var visCache = null;   // visibleIndices 缓存（筛选条件/数据/口径变更时置空）
+  var FILTER_PRESET_KEY = "tcreader.filterPresets";
+  var STATUS_CHIP_DEFS = [
+    { val: "PASS", label: "通过" },
+    { val: "FAIL", label: "失败" },
+    { val: "BLOCK", label: "阻塞" },
+    { val: "NA", label: "跳过" },
+    { val: "UNTESTED", label: "未测" },
+  ];
+  var BUILTIN_PRESETS = [
+    { name: "冒烟测试(P0)", kind: "p0" },
+    { name: "复测(失败+跳过)", kind: "retest" },
+  ];
+
+  function emptyFilter() {
+    return { keyword: "", idFrom: "", idTo: "", statuses: [],
+             refCol: "", priorities: [], modules: [], sheets: [], risks: [] };
+  }
+
+  function filterActive() {
+    var f = state.filter;
+    return !!(f.keyword || f.idFrom || f.idTo || f.statuses.length ||
+              f.priorities.length || f.modules.length || f.sheets.length || f.risks.length);
+  }
+
+  // 激活的条件组数（顶栏按钮角标）
+  function filterCondCount() {
+    var f = state.filter;
+    var n = 0;
+    if (f.keyword) n++;
+    if (f.idFrom || f.idTo) n++;
+    if (f.statuses.length) n++;
+    if (f.priorities.length) n++;
+    if (f.modules.length) n++;
+    if (f.sheets.length) n++;
+    if (f.risks.length) n++;
+    return n;
+  }
+
+  function invalidateFilter() { visCache = null; }
+
+  // 某 Sheet 的全量用例数（表格摘要"筛选自 N"用）
+  function countSheetCases(sheet) {
+    var n = 0;
+    state.cases.forEach(function (c) { if (c.sheet === sheet) n++; });
+    return n;
+  }
+
+  // 状态筛选参照列取值：默认跟随当前轮次；指定列在该 Sheet 缺失时回退首个结果列
+  function resultOfRef(c) {
+    var ref = state.filter.refCol;
+    if (!ref) return caseResult(c);
+    var colsArr = state.resultColumns[c.sheet] || [];
+    var col = colsArr.indexOf(ref) >= 0 ? ref : (colsArr.length ? colsArr[0] : "");
+    if (col && c.results && Object.prototype.hasOwnProperty.call(c.results, col)) {
+      return c.results[col];
+    }
+    return c.result;
+  }
+
+  // 提取字符串末尾数字（编号范围比较用），无数字返回 null
+  function trailingNum(s) {
+    var m = /(\d+)(?!.*\d)/.exec(String(s || ""));
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function matchesFilter(c) {
+    var f = state.filter;
+    if (f.sheets.length && f.sheets.indexOf(c.sheet) < 0) return false;
+    if (f.modules.length && f.modules.indexOf(String(c.module || "").trim()) < 0) return false;
+    if (f.priorities.length && f.priorities.indexOf(String(c.priority || "").trim()) < 0) return false;
+    if (f.risks.length && f.risks.indexOf(String(c.risk || "").trim()) < 0) return false;
+    if (f.statuses.length) {
+      var raw = resultOfRef(c);
+      var norm = normalizeResult(raw);
+      var hit = norm ? f.statuses.indexOf(norm) >= 0
+                     : (!String(raw || "").trim() && f.statuses.indexOf("UNTESTED") >= 0);
+      if (!hit) return false;
+    }
+    var lo = trailingNum(f.idFrom);
+    var hi = trailingNum(f.idTo);
+    if (lo !== null || hi !== null) {
+      var n = trailingNum(c.caseId);
+      if (n === null) return false;
+      if (lo !== null && n < lo) return false;
+      if (hi !== null && n > hi) return false;
+    }
+    if (f.keyword) {
+      var kw = f.keyword.toLowerCase();
+      var hay = [c.caseId, c.title, c.scenario, c.module, c.desc,
+                 c.steps, c.expected, c.note].join("\n").toLowerCase();
+      if (hay.indexOf(kw) < 0) return false;
+    }
+    return true;
+  }
+
+  // 通过筛选的 state.cases 下标数组（无筛选时为全量），带缓存
+  function visibleIndices() {
+    if (visCache) return visCache;
+    var out = [];
+    var active = filterActive();
+    state.cases.forEach(function (c, i) {
+      if (!active || matchesFilter(c)) out.push(i);
+    });
+    visCache = out;
+    return out;
+  }
+
+  // 顶栏按钮角标与面板匹配计数
+  function updateFilterBar() {
+    if (!el.filterToggle) return;
+    var n = filterCondCount();
+    el.filterToggle.textContent = n ? ("筛选·" + n) : "筛选";
+    el.filterToggle.classList.toggle("active", n > 0);
+    el.filterCount.textContent = filterActive()
+      ? ("匹配 " + visibleIndices().length + " / " + state.cases.length + " 条")
+      : ("共 " + state.cases.length + " 条");
+  }
+
+  // 筛选条件变更统一入口：冲刷编辑、失效缓存、校正当前用例、按视图重渲染
+  function applyFilter() {
+    flushSave();
+    invalidateFilter();
+    var vis = visibleIndices();
+    if (vis.length && vis.indexOf(state.index) < 0) {
+      state.index = vis[0];   // 新筛选下当前用例不可见：定位到首个匹配用例
+    }
+    updateFilterBar();
+    refreshCurrentView();
+  }
+
+  function refreshCurrentView() {
+    if (state.view === "exec" || state.view === "table") { showView(state.view); }
+    else if (state.view === "detail") { renderDetail(); updateProgress(); }
+    else { updateProgress(); }
+  }
+
+  // 筛选空态：可见工作集为空时替代卡片/表格展示
+  function showFilterEmpty() {
+    el.card.classList.add("hidden");
+    el.tableView.classList.add("hidden");
+    el.navbar.classList.add("hidden");
+    el.filterEmpty.classList.remove("hidden");
+    updateProgress();
+  }
+
+  /* ---------- 筛选面板渲染 ---------- */
+  // 从当前用例聚合去重（保持首次出现顺序）
+  function distinctValues(field) {
+    var seen = {}, out = [];
+    state.cases.forEach(function (c) {
+      var v = String(c[field] || "").trim();
+      if (v && !seen[v]) { seen[v] = true; out.push(v); }
+    });
+    return out;
+  }
+
+  function toggleInArr(arr, val) {
+    var i = arr.indexOf(val);
+    if (i >= 0) arr.splice(i, 1); else arr.push(val);
+  }
+
+  // 可切换选中态的筛选胶囊：label 展示、val 存入 selectedArr
+  function appendChip(container, label, selectedArr, val) {
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "filter-chip" + (selectedArr.indexOf(val) >= 0 ? " selected" : "");
+    chip.textContent = label;
+    chip.addEventListener("click", function () {
+      toggleInArr(selectedArr, val);
+      chip.classList.toggle("selected");
+      applyFilter();
+    });
+    container.appendChild(chip);
+  }
+
+  // 值列表渲染为一组 chips；无数据时整组（外层 .filter-group）隐藏
+  function fillChipGroup(container, values, selectedArr) {
+    container.innerHTML = "";
+    values.forEach(function (v) { appendChip(container, v, selectedArr, v); });
+    container.parentElement.classList.toggle("hidden", !values.length);
+  }
+
+  function renderFilterPanel() {
+    if (!el.filterPanel) return;
+    var f = state.filter;
+    el.filterKeyword.value = f.keyword;
+    el.filterIdFrom.value = f.idFrom;
+    el.filterIdTo.value = f.idTo;
+
+    // 状态 chips（固定五项）
+    el.filterStatuses.innerHTML = "";
+    STATUS_CHIP_DEFS.forEach(function (d) {
+      appendChip(el.filterStatuses, d.label, f.statuses, d.val);
+    });
+
+    // 参照列下拉：首项跟随当前轮次
+    var rounds = roundOptions();
+    if (f.refCol && rounds.indexOf(f.refCol) < 0) f.refCol = "";
+    el.filterRefCol.innerHTML = "";
+    var follow = document.createElement("option");
+    follow.value = "";
+    follow.textContent = "跟随当前轮次";
+    el.filterRefCol.appendChild(follow);
+    rounds.forEach(function (h) {
+      var opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = h;
+      el.filterRefCol.appendChild(opt);
+    });
+    el.filterRefCol.value = f.refCol;
+    el.filterRefCol.parentElement.classList.toggle("hidden", !rounds.length);
+
+    fillChipGroup(el.filterPriorities, distinctValues("priority"), f.priorities);
+    fillChipGroup(el.filterRisks, distinctValues("risk"), f.risks);
+    fillChipGroup(el.filterModules, distinctValues("module"), f.modules);
+
+    // Sheet chips：展示 sheetTitle，值取 sheet 名
+    el.filterSheets.innerHTML = "";
+    var seenSheet = {};
+    state.cases.forEach(function (c) {
+      if (seenSheet[c.sheet]) return;
+      seenSheet[c.sheet] = true;
+      appendChip(el.filterSheets, c.sheetTitle || c.sheet, f.sheets, c.sheet);
+    });
+    el.filterSheets.parentElement.classList.toggle("hidden", !Object.keys(seenSheet).length);
+
+    renderPresetChips();
+    updateFilterBar();
+    el.filterPanel.classList.toggle("hidden", !state.filterOpen);
+  }
+
+  /* ---------- 筛选预设（localStorage + 内置） ---------- */
+  function loadUserPresets() {
+    try { return JSON.parse(localStorage.getItem(FILTER_PRESET_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function saveUserPresets(list) {
+    try { localStorage.setItem(FILTER_PRESET_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  // 内置预设在应用时按当前文件动态解析
+  function builtinFilter(kind) {
+    var f = emptyFilter();
+    if (kind === "p0") {
+      f.priorities = distinctValues("priority").filter(function (v) {
+        return v.toUpperCase().indexOf("P0") >= 0;
+      });
+    } else if (kind === "retest") {
+      f.statuses = ["FAIL", "NA"];
+    }
+    return f;
+  }
+
+  // 应用已存预设：清洗掉当前文件不存在的选项值后整体替换
+  function applyPresetFilter(saved) {
+    var f = emptyFilter();
+    Object.keys(f).forEach(function (k) {
+      if (saved && typeof saved[k] !== "undefined") f[k] = saved[k];
+    });
+    var pri = distinctValues("priority");
+    var mod = distinctValues("module");
+    var rk = distinctValues("risk");
+    var sheetSet = {};
+    state.cases.forEach(function (c) { sheetSet[c.sheet] = true; });
+    f.priorities = (f.priorities || []).filter(function (v) { return pri.indexOf(v) >= 0; });
+    f.modules = (f.modules || []).filter(function (v) { return mod.indexOf(v) >= 0; });
+    f.risks = (f.risks || []).filter(function (v) { return rk.indexOf(v) >= 0; });
+    f.sheets = (f.sheets || []).filter(function (v) { return !!sheetSet[v]; });
+    f.statuses = (f.statuses || []).filter(function (v) {
+      return STATUS_CHIP_DEFS.some(function (d) { return d.val === v; });
+    });
+    if (roundOptions().indexOf(f.refCol) < 0) f.refCol = "";
+    state.filter = f;
+    renderFilterPanel();
+    applyFilter();
+  }
+
+  function renderPresetChips() {
+    el.filterPresets.innerHTML = "";
+    BUILTIN_PRESETS.forEach(function (p) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "filter-chip preset-chip preset-builtin";
+      chip.textContent = p.name;
+      chip.title = "应用内置预设";
+      chip.addEventListener("click", function () { applyPresetFilter(builtinFilter(p.kind)); });
+      el.filterPresets.appendChild(chip);
+    });
+    loadUserPresets().forEach(function (p, idx) {
+      var wrap = document.createElement("span");
+      wrap.className = "filter-chip preset-chip";
+      var applyBtn = document.createElement("button");
+      applyBtn.type = "button";
+      applyBtn.className = "preset-apply";
+      applyBtn.textContent = p.name;
+      applyBtn.title = "应用预设";
+      applyBtn.addEventListener("click", function () { applyPresetFilter(p.filter); });
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "preset-del";
+      delBtn.textContent = "×";
+      delBtn.title = "删除预设";
+      delBtn.addEventListener("click", function () {
+        var list = loadUserPresets();
+        list.splice(idx, 1);
+        saveUserPresets(list);
+        renderPresetChips();
+      });
+      wrap.appendChild(applyBtn);
+      wrap.appendChild(delBtn);
+      el.filterPresets.appendChild(wrap);
+    });
+  }
+
+  function savePresetFromCurrent() {
+    if (!filterActive()) { setSaveStatus("请先设置筛选条件", "error"); return; }
+    var name = window.prompt("预设名称（同名将覆盖）：", "");
+    if (name === null) return;
+    name = name.trim();
+    if (!name) return;
+    var snapshot = JSON.parse(JSON.stringify(state.filter));
+    var list = loadUserPresets();
+    var found = false;
+    list.forEach(function (p) { if (p.name === name) { p.filter = snapshot; found = true; } });
+    if (!found) list.push({ name: name, filter: snapshot });
+    saveUserPresets(list);
+    renderPresetChips();
+    setSaveStatus("预设已保存 ✓", "ok");
   }
 
   /* ---------- Sheet 过滤/跳转 ---------- */
@@ -644,7 +1011,10 @@
   function jumpToSheet(sheet) {
     // 预览页（矩阵/信息）直接打开预览
     if (state.previewMap[sheet]) { flushSave(); openPreview(sheet); return; }
-    for (var i = 0; i < state.cases.length; i++) {
+    // 只在可见工作集内定位该 Sheet 首个用例
+    var vis = visibleIndices();
+    for (var k = 0; k < vis.length; k++) {
+      var i = vis[k];
       if (state.cases[i].sheet === sheet) {
         // 表格视图内切换 Sheet 时保持表格视图
         if (state.view === "table") { state.index = i; renderTable(); }
@@ -652,19 +1022,26 @@
         return;
       }
     }
+    if (filterActive()) {
+      setSaveStatus("当前筛选下该 Sheet 无匹配用例", "error");
+      var cur = state.cases[state.index];
+      if (cur) el.sheetFilter.value = cur.sheet;   // 下拉回弹到当前位置
+    }
   }
 
   function jumpToNextUntested() {
-    var start = state.index;
-    for (var k = 1; k <= state.cases.length; k++) {
-      var i = (start + k) % state.cases.length;
+    var vis = visibleIndices();
+    if (!vis.length) { setSaveStatus("当前筛选下无用例", "error"); return; }
+    var pos = vis.indexOf(state.index);   // 不在可见集时从头找起
+    for (var k = 1; k <= vis.length; k++) {
+      var i = vis[(pos + k + vis.length) % vis.length];
       if (!normalizeResult(caseResult(state.cases[i]))) {
         if (state.view === "table") { state.index = i; renderTable(); }
         else { openCase(i); }
         return;
       }
     }
-    setSaveStatus("全部用例已完成 🎉", "ok");
+    setSaveStatus(filterActive() ? "筛选内用例已全部完成 🎉" : "全部用例已完成 🎉", "ok");
   }
 
   /* ---------- 结果胶囊与弹出菜单（表格视图 / 矩阵预览共用） ---------- */
@@ -742,16 +1119,20 @@
     var cur = state.cases[state.index];
     if (!cur) return;
     var sheet = cur.sheet;
+    // 筛选激活时只列可见用例
+    var vis = visibleIndices();
     var items = [];
-    state.cases.forEach(function (c, i) {
+    vis.forEach(function (i) {
+      var c = state.cases[i];
       if (c.sheet === sheet) items.push({ c: c, index: i });
     });
 
     el.tableTitle.textContent = cur.sheetTitle || sheet;
     var done = 0;
     items.forEach(function (it) { if (normalizeResult(caseResult(it.c))) done++; });
-    el.tableSummary.textContent = "共 " + items.length + " 条用例 · 已完成 " + done +
-      " · 点击编号/标题可进入卡片精确执行";
+    el.tableSummary.textContent = "共 " + items.length + " 条用例" +
+      (filterActive() ? "（筛选自 " + countSheetCases(sheet) + "）" : "") +
+      " · 已完成 " + done + " · 点击编号/标题可进入卡片精确执行";
 
     el.tableWrap.innerHTML = "";
     var table = document.createElement("table");
@@ -850,11 +1231,16 @@
     patchCase({ sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name,
                 result: result, resultColumn: eff.name || undefined },
       function () {
+        // 完成数与表格同口径（筛选激活时只统计可见用例）
+        var items = [];
+        visibleIndices().forEach(function (i) {
+          if (state.cases[i].sheet === c.sheet) items.push(state.cases[i]);
+        });
         var doneNow = 0;
-        var items = state.cases.filter(function (x) { return x.sheet === c.sheet; });
         items.forEach(function (x) { if (normalizeResult(caseResult(x))) doneNow++; });
-        el.tableSummary.textContent = "共 " + items.length + " 条用例 · 已完成 " + doneNow +
-          " · 点击编号/标题可进入卡片精确执行";
+        el.tableSummary.textContent = "共 " + items.length + " 条用例" +
+          (filterActive() ? "（筛选自 " + countSheetCases(c.sheet) + "）" : "") +
+          " · 已完成 " + doneNow + " · 点击编号/标题可进入卡片精确执行";
       },
       function () {
         setCaseResult(c, prev);
@@ -892,9 +1278,10 @@
     var container = el.sheetGroups;
     container.innerHTML = "";
 
-    // 可执行用例按 Sheet 归组
+    // 可执行用例按 Sheet 归组（筛选激活时只列可见用例，0 匹配的组自动跳过）
     var caseMap = {};
-    state.cases.forEach(function (c, i) {
+    visibleIndices().forEach(function (i) {
+      var c = state.cases[i];
       if (!caseMap[c.sheet]) caseMap[c.sheet] = [];
       caseMap[c.sheet].push({ c: c, index: i });
     });
@@ -914,7 +1301,8 @@
     });
 
     el.detailSummary.textContent = "共 " + state.sheets.length + " 个 Sheet · 可执行 " +
-      execGroups + " 组 · 已完成 " + p.done + " / " + p.total;
+      execGroups + " 组 · 已完成 " + p.done + " / " + p.total +
+      (filterActive() ? "（筛选中）" : "");
   }
 
   function buildCaseGroup(sheetMeta, items) {
@@ -1272,6 +1660,8 @@
         var keepIndex = state.index;
         var keepView = state.view === "preview" ? "detail" : state.view;
         var keepPrefer = state.preferTable;
+        var keepFilter = JSON.parse(JSON.stringify(state.filter));
+        var keepFilterOpen = state.filterOpen;
         return fetchJSON("/api/cases").then(function (r2) {
           if (!r2.ok || r2.d.needsSetup) { setSaveStatus("已新建列，请刷新页面", "ok"); return; }
           applyPayload(r2.d);
@@ -1279,6 +1669,9 @@
           state.preferTable = keepPrefer;
           state.selectedRound = name;
           renderRoundSelect();
+          // 恢复新建列前的筛选条件与面板开合状态（applyPayload 已重置）
+          state.filterOpen = keepFilterOpen;
+          applyPresetFilter(keepFilter);
           showView(keepView === "setup" ? "exec" : keepView);
           setSaveStatus("已新建列 ✓", "ok");
         });
@@ -1352,6 +1745,7 @@
     el.roundSelect.addEventListener("change", function () {
       flushSave();
       state.selectedRound = el.roundSelect.value;
+      invalidateFilter();   // 参照列"跟随当前轮次"时筛选口径随之变化
       updateRoundWarn();
       if (state.view === "exec") render();
       else if (state.view === "table") renderTable();
@@ -1359,6 +1753,36 @@
       updateProgress();
     });
     el.newRoundBtn.addEventListener("click", createResultColumn);
+
+    // 筛选面板
+    el.filterToggle.addEventListener("click", function () {
+      state.filterOpen = !state.filterOpen;
+      el.filterPanel.classList.toggle("hidden", !state.filterOpen);
+    });
+    el.filterClearBtn.addEventListener("click", function () {
+      state.filter = emptyFilter();
+      renderFilterPanel();
+      applyFilter();
+    });
+    el.filterSaveBtn.addEventListener("click", savePresetFromCurrent);
+    el.filterRefCol.addEventListener("change", function () {
+      state.filter.refCol = el.filterRefCol.value;
+      applyFilter();
+    });
+    // 关键词 / 编号范围输入：200ms 防抖实时生效
+    var filterInputTimer = null;
+    function applyFilterInputs() {
+      if (filterInputTimer) clearTimeout(filterInputTimer);
+      filterInputTimer = setTimeout(function () {
+        state.filter.keyword = el.filterKeyword.value.trim();
+        state.filter.idFrom = el.filterIdFrom.value.trim();
+        state.filter.idTo = el.filterIdTo.value.trim();
+        applyFilter();
+      }, 200);
+    }
+    [el.filterKeyword, el.filterIdFrom, el.filterIdTo].forEach(function (node) {
+      node.addEventListener("input", applyFilterInputs);
+    });
 
     el.viewToggle.addEventListener("click", function () {
       if (state.view === "detail" || state.view === "preview") {
@@ -1400,9 +1824,22 @@
     document.addEventListener("keydown", onKey);
   }
 
+  // 上一条/下一条：在可见工作集内移动；当前用例掉出筛选时找方向上最近的可见项
   function go(delta) {
-    var ni = state.index + delta;
-    if (ni < 0 || ni >= state.cases.length) return;
+    var vis = visibleIndices();
+    if (!vis.length) return;
+    var pos = vis.indexOf(state.index);
+    var ni = -1;
+    if (pos >= 0) {
+      var np = pos + delta;
+      if (np < 0 || np >= vis.length) return;
+      ni = vis[np];
+    } else if (delta > 0) {
+      for (var i = 0; i < vis.length; i++) { if (vis[i] > state.index) { ni = vis[i]; break; } }
+    } else {
+      for (var j = vis.length - 1; j >= 0; j--) { if (vis[j] < state.index) { ni = vis[j]; break; } }
+    }
+    if (ni < 0) return;
     flushSave(); // 切换前立即保存（如有待保存）
     state.index = ni;
     render();
