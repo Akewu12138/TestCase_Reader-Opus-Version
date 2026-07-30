@@ -21,6 +21,8 @@
     preferTable: false,       // 可执行 Sheet 的视图偏好（表格/卡片）
     lbImages: [],             // 灯箱图片列表
     lbIndex: 0,               // 灯箱当前图片下标
+    resultColumns: {},        // sheet -> 结果列表头名列表（测试轮次候选）
+    selectedRound: "",        // 当前选中的结果列表头名（全局工作模式）
   };
 
   // 测试结果显示文案与样式
@@ -32,6 +34,7 @@
   var el = {};
   var IDS = [
     "fileName", "sessionInfo", "execControls", "changeFile", "sheetFilter",
+    "roundSelect", "newRoundBtn",
     "saveStatus", "progressWrap", "progressFill", "progressText", "loader",
     "setupView", "stageInput", "testerInput", "uploadBtn", "uploadInput",
     "fileList", "setupHint", "startBtn",
@@ -94,6 +97,8 @@
     state.previews.forEach(function (p) { state.previewMap[p.sheet] = p; });
     state.sessionTester = d.tester || "";
     state.fileName = d.fileName || "";
+    state.resultColumns = d.resultColumns || {};
+    state.selectedRound = "";   // 换文件后重置，renderRoundSelect 取默认首列
     state.index = 0;
     state.detailInited = false;
     state.expandedSheets = {};
@@ -104,6 +109,7 @@
     if (d.tester) parts.push("测试人员: " + d.tester);
     el.sessionInfo.textContent = parts.join("  ·  ");
     buildSheetFilter();
+    renderRoundSelect();
   }
 
   // 载入后决定进入哪个视图：有可执行用例进执行页，否则若有预览进详情页
@@ -334,8 +340,8 @@
 
     renderExtras(c.extras || []);
 
-    // 执行区回显
-    setActiveResult(c.result);
+    // 执行区回显（测试结果按当前选中轮次列读取）
+    setActiveResult(caseResult(c));
     el.actual.value = c.actual || "";
     el.foundTime.value = c.foundTime || "";
     state.foundTimeOriginal = el.foundTime.value; // 记录基准值用于修改确认
@@ -349,6 +355,7 @@
     el.prevBtn.disabled = state.index === 0;
     el.nextBtn.disabled = state.index === state.cases.length - 1;
     el.sheetFilter.value = c.sheet;
+    updateRoundWarn();
     updateProgress();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -513,7 +520,93 @@
     return "";
   }
 
+  /* ---------- 测试轮次（结果写入列）工作模式 ---------- */
+  // 全文件结果列名并集：按 Sheet 原始顺序 + 首次出现列序去重
+  function roundOptions() {
+    var seen = {};
+    var opts = [];
+    state.sheets.forEach(function (s) {
+      (state.resultColumns[s.name] || []).forEach(function (h) {
+        if (!seen[h]) { seen[h] = true; opts.push(h); }
+      });
+    });
+    return opts;
+  }
+
+  // 回退解析唯一出口：选中列在该 Sheet 存在则用之，否则回退该 Sheet 首个结果列
+  function effectiveColFor(sheet) {
+    var colsArr = state.resultColumns[sheet] || [];
+    if (state.selectedRound && colsArr.indexOf(state.selectedRound) >= 0) {
+      return { name: state.selectedRound, fallback: false };
+    }
+    return {
+      name: colsArr.length ? colsArr[0] : "",
+      fallback: !!state.selectedRound && colsArr.length > 0,
+    };
+  }
+
+  // 按当前轮次读取用例结果；旧负载（无 results）兜底 c.result
+  function caseResult(c) {
+    var col = effectiveColFor(c.sheet).name;
+    if (col && c.results && Object.prototype.hasOwnProperty.call(c.results, col)) {
+      return c.results[col];
+    }
+    return c.result;
+  }
+
+  // 按当前轮次写本地内存（与后端 resultColumn 写盘同步）
+  function setCaseResult(c, val) {
+    var col = effectiveColFor(c.sheet).name;
+    if (col) {
+      c.results = c.results || {};
+      c.results[col] = val;
+    } else {
+      c.result = val;
+    }
+  }
+
+  // 渲染顶栏轮次选择器：并集选项 + 默认首列 + 缺失警示
+  function renderRoundSelect() {
+    if (!el.roundSelect) return;
+    var opts = roundOptions();
+    var hide = opts.length === 0;
+    el.roundSelect.classList.toggle("hidden", hide);
+    el.newRoundBtn.classList.toggle("hidden", hide);
+    if (hide) return;
+    if (!state.selectedRound || opts.indexOf(state.selectedRound) < 0) {
+      state.selectedRound = opts[0];
+    }
+    el.roundSelect.innerHTML = "";
+    opts.forEach(function (h) {
+      var opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = "结果列: " + h;
+      el.roundSelect.appendChild(opt);
+    });
+    el.roundSelect.value = state.selectedRound;
+    updateRoundWarn();
+  }
+
+  // 当前用例所在 Sheet 缺少选中列时给出黄色警示（写入回退列，不改文件）
+  function updateRoundWarn() {
+    if (!el.roundSelect) return;
+    var c = state.cases[state.index];
+    var eff = c ? effectiveColFor(c.sheet) : { name: "", fallback: false };
+    el.roundSelect.classList.toggle("round-missing", eff.fallback);
+    el.roundSelect.title = eff.fallback
+      ? "当前 Sheet 无【" + state.selectedRound + "】列，本页写入【" + eff.name + "】"
+      : "选择本轮测试结果写入列";
+  }
+
+  // 进度按当前选中列本地统计（done=该列非空的用例数，与后端主列口径一致）
+  function computeLocalProgress() {
+    var done = 0;
+    state.cases.forEach(function (c) { if (caseResult(c)) done++; });
+    state.progress = { done: done, total: state.cases.length };
+  }
+
   function updateProgress() {
+    computeLocalProgress();
     var p = state.progress;
     var pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
     el.progressFill.style.width = pct + "%";
@@ -565,7 +658,7 @@
     var start = state.index;
     for (var k = 1; k <= state.cases.length; k++) {
       var i = (start + k) % state.cases.length;
-      if (!normalizeResult(state.cases[i].result)) {
+      if (!normalizeResult(caseResult(state.cases[i]))) {
         if (state.view === "table") { state.index = i; renderTable(); }
         else { openCase(i); }
         return;
@@ -656,7 +749,7 @@
 
     el.tableTitle.textContent = cur.sheetTitle || sheet;
     var done = 0;
-    items.forEach(function (it) { if (normalizeResult(it.c.result)) done++; });
+    items.forEach(function (it) { if (normalizeResult(caseResult(it.c))) done++; });
     el.tableSummary.textContent = "共 " + items.length + " 条用例 · 已完成 " + done +
       " · 点击编号/标题可进入卡片精确执行";
 
@@ -665,7 +758,9 @@
     table.className = "case-table";
     var thead = document.createElement("thead");
     var htr = document.createElement("tr");
-    ["编号", "标题 / 场景", "模块", "优先级", "测试结果", "备注"].forEach(function (h) {
+    // 结果列表头显示当前有效写入列名（轮次工作模式）
+    var effName = effectiveColFor(sheet).name || "测试结果";
+    ["编号", "标题 / 场景", "模块", "优先级", effName, "备注"].forEach(function (h) {
       var th = document.createElement("th");
       th.textContent = h;
       htr.appendChild(th);
@@ -678,7 +773,7 @@
       var c = it.c;
       var tr = document.createElement("tr");
       if (it.index === state.index) tr.className = "current";
-      if (!normalizeResult(c.result)) tr.classList.add("untested");
+      if (!normalizeResult(caseResult(c))) tr.classList.add("untested");
 
       var tdId = document.createElement("td");
       tdId.className = "ct-id";
@@ -714,7 +809,7 @@
 
       var tdRes = document.createElement("td");
       tdRes.className = "ct-res";
-      var pill = makeResultPill(c.result, function (val, pillEl) {
+      var pill = makeResultPill(caseResult(c), function (val, pillEl) {
         saveCaseResult(it.index, val, pillEl, tr);
       });
       tdRes.appendChild(pill);
@@ -738,28 +833,31 @@
     el.tableWrap.appendChild(table);
 
     el.sheetFilter.value = sheet;
+    updateRoundWarn();
     updateProgress();
   }
 
-  // 表格视图行内标记结果：乐观更新胶囊，失败回滚
+  // 表格视图行内标记结果：乐观更新胶囊，失败回滚（读写均按当前轮次列）
   function saveCaseResult(caseIndex, result, pillEl, rowEl) {
     var c = state.cases[caseIndex];
     if (!c) return;
-    var prev = c.result;
-    c.result = result;
+    var eff = effectiveColFor(c.sheet);
+    var prev = caseResult(c);
+    setCaseResult(c, result);
     applyPillState(pillEl, result);
     rowEl.classList.toggle("untested", !normalizeResult(result));
     setSaveStatus("正在保存…", "saving");
-    patchCase({ sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name, result: result },
+    patchCase({ sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name,
+                result: result, resultColumn: eff.name || undefined },
       function () {
         var doneNow = 0;
         var items = state.cases.filter(function (x) { return x.sheet === c.sheet; });
-        items.forEach(function (x) { if (normalizeResult(x.result)) doneNow++; });
+        items.forEach(function (x) { if (normalizeResult(caseResult(x))) doneNow++; });
         el.tableSummary.textContent = "共 " + items.length + " 条用例 · 已完成 " + doneNow +
           " · 点击编号/标题可进入卡片精确执行";
       },
       function () {
-        c.result = prev;
+        setCaseResult(c, prev);
         applyPillState(pillEl, prev);
         rowEl.classList.toggle("untested", !normalizeResult(prev));
       });
@@ -778,7 +876,8 @@
           if (onFail) onFail();
           return;
         }
-        if (res.d.progress) { state.progress = res.d.progress; updateProgress(); }
+        // 进度改为前端按选中轮次列本地统计，后端 progress（主列口径）不再采用
+        updateProgress();
         setSaveStatus("已保存 ✓", "ok");
         if (onOk) onOk();
       })
@@ -801,6 +900,7 @@
     });
 
     var execGroups = 0;
+    computeLocalProgress();
     var p = state.progress;
 
     // 按原始 Sheet 顺序渲染：可执行组 + 只读预览组
@@ -819,7 +919,7 @@
 
   function buildCaseGroup(sheetMeta, items) {
     var done = 0;
-    items.forEach(function (it) { if (normalizeResult(it.c.result)) done++; });
+    items.forEach(function (it) { if (normalizeResult(caseResult(it.c))) done++; });
     var expanded = !!state.expandedSheets[sheetMeta.name];
 
     var groupEl = document.createElement("div");
@@ -850,7 +950,7 @@
       var list = document.createElement("div");
       list.className = "sg-list";
       items.forEach(function (it) {
-        var norm = normalizeResult(it.c.result);
+        var norm = normalizeResult(caseResult(it.c));
         var row = document.createElement("button");
         row.type = "button";
         row.className = "sg-case" + (it.index === state.index ? " current" : "");
@@ -1117,8 +1217,8 @@
     var c = state.cases[state.index];
     if (!c) return;
     var fields = collectFields();
-    // 同步到本地内存，切换用例时保持回显
-    c.result = fields.result;
+    // 同步到本地内存，切换用例时保持回显（结果写入当前轮次列）
+    setCaseResult(c, fields.result);
     c.actual = fields.actual;
     c.foundTime = fields.foundTime;
     c.bugId = fields.bugId;
@@ -1126,14 +1226,64 @@
     c.note = fields.note;
 
     // expectedName 用于后端校验目标行未因外部编辑而错位
+    // resultColumn 指定本轮结果写入列（其余字段始终写原列）
+    var eff = effectiveColFor(c.sheet);
     var payload = Object.assign(
-      { sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name }, fields);
+      { sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name,
+        resultColumn: eff.name || undefined }, fields);
     patchCase(payload);
   }
 
   function setSaveStatus(text, kind) {
     el.saveStatus.textContent = text;
     el.saveStatus.className = "save-status" + (kind === "saving" ? " saving" : kind === "error" ? " error" : "");
+  }
+
+  /* ---------- 新建结果列（开启新一轮测试） ---------- */
+  // 识别现有列名中的 rc 编号，建议下一轮名称（如 rc10测试结果 -> rc11测试结果）
+  function suggestRoundName() {
+    var maxN = 0;
+    roundOptions().forEach(function (h) {
+      var m = /rc\s*(\d+)/i.exec(h);
+      if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+    });
+    return maxN > 0 ? ("rc" + (maxN + 1) + "测试结果") : "";
+  }
+
+  function createResultColumn() {
+    var name = window.prompt(
+      "新建结果列名称（将在所有用例 Sheet 表头末尾统一创建）：", suggestRoundName());
+    if (name === null) return;
+    name = name.trim();
+    if (!name) return;
+    flushSave();
+    setSaveStatus("正在新建列…", "saving");
+    fetchJSON("/api/result-columns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          setSaveStatus(res.d && res.d.error ? res.d.error : "新建结果列失败", "error");
+          return;
+        }
+        // 重新拉取负载（新列已落盘），保持当前位置与视图，并自动切到新列
+        var keepIndex = state.index;
+        var keepView = state.view === "preview" ? "detail" : state.view;
+        var keepPrefer = state.preferTable;
+        return fetchJSON("/api/cases").then(function (r2) {
+          if (!r2.ok || r2.d.needsSetup) { setSaveStatus("已新建列，请刷新页面", "ok"); return; }
+          applyPayload(r2.d);
+          state.index = Math.min(keepIndex, Math.max(0, state.cases.length - 1));
+          state.preferTable = keepPrefer;
+          state.selectedRound = name;
+          renderRoundSelect();
+          showView(keepView === "setup" ? "exec" : keepView);
+          setSaveStatus("已新建列 ✓", "ok");
+        });
+      })
+      .catch(function () { setSaveStatus("网络错误", "error"); });
   }
 
   /* ---------- 事件绑定 ---------- */
@@ -1197,6 +1347,19 @@
     el.nextBtn.addEventListener("click", function () { go(1); });
     el.jumpNext.addEventListener("click", jumpToNextUntested);
     el.sheetFilter.addEventListener("change", function () { jumpToSheet(el.sheetFilter.value); });
+
+    // 测试轮次选择器：切列前冲刷未保存编辑，随后当前视图整体重渲染
+    el.roundSelect.addEventListener("change", function () {
+      flushSave();
+      state.selectedRound = el.roundSelect.value;
+      updateRoundWarn();
+      if (state.view === "exec") render();
+      else if (state.view === "table") renderTable();
+      else if (state.view === "detail") renderDetail();
+      updateProgress();
+    });
+    el.newRoundBtn.addEventListener("click", createResultColumn);
+
     el.viewToggle.addEventListener("click", function () {
       if (state.view === "detail" || state.view === "preview") {
         showView(state.preferTable ? "table" : "exec");

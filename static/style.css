@@ -54,6 +54,12 @@ body {
   font-size: 14px;
   color: var(--text);
 }
+/* 顶栏测试轮次（结果写入列）选择器 */
+.round-select { max-width: 180px; }
+.round-select.round-missing {
+  border-color: #d9a406;
+  box-shadow: 0 0 0 2px rgba(217, 164, 6, 0.25);
+}
 .save-status { font-size: 13px; color: var(--pass); min-width: 60px; }
 .save-status.saving { color: var(--text-soft); }
 .save-status.error { color: var(--fail); }

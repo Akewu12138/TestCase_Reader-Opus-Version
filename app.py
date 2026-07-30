@@ -232,16 +232,37 @@ def patch_case():
     result_col = data.get("resultCol")
     if not isinstance(result_col, int):
         result_col = None
+    # 测试轮次：功能/场景页 result 的目标结果列表头名（仅影响 result 字段）
+    result_column = str(data.get("resultColumn") or "").strip() or None
     try:
         progress = excel_service.update_case(
             path, sheet, row_index, fields,
             expected_name=data.get("expectedName") or None,
-            result_col=result_col)
+            result_col=result_col, result_column=result_column)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"error": "写回失败: %s" % exc}), 500
     return jsonify({"ok": True, "progress": progress})
+
+
+@app.route("/api/result-columns", methods=["POST"])
+def create_result_column():
+    """在所有可执行 Sheet 统一新建一个结果列（开启新一轮测试）。"""
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or "").strip()
+    path = STATE["current_path"]
+    if not path or not os.path.exists(path):
+        return jsonify({"error": "当前文件不存在"}), 404
+    try:
+        excel_service.add_result_column(path, name)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except OSError:
+        return jsonify({"error": "写入失败：请先关闭正在打开该 Excel 的程序后重试"}), 400
+    except Exception as exc:
+        return jsonify({"error": "新建结果列失败: %s" % exc}), 500
+    return jsonify({"ok": True, "name": name})
 
 
 @app.route("/api/download", methods=["GET"])

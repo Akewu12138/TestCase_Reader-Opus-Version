@@ -212,19 +212,41 @@ def _resolve_columns(ws, header_row):
     return cols
 
 
-def _extra_columns(ws, header_row, cols):
+def _extra_columns(ws, header_row, cols, exclude=None):
     """未被识别为已知字段的非空表头列，返回 [(col, header_text)]，按列序。
 
     用于将任意额外/未知列作为附加字段随用例展示，避免数据丢失。
     应在 _ensure_extra_columns 之后调用，以便排除已补齐的实际现象/发现时间列。
+    exclude: 额外排除的列号集合（如已被识别为结果类的轮次列，避免重复展示）。
     """
     used = set(cols.values())
+    if exclude:
+        used |= set(exclude)
     items = []
     for col_idx in range(1, min(ws.max_column, 60) + 1):
         if col_idx in used:
             continue
         text = _cell_str(ws.cell(row=header_row, column=col_idx).value)
         if text:
+            items.append((col_idx, text))
+    return items
+
+
+def _result_columns(ws, header_row, cols):
+    """该 Sheet 所有"测试结果类"列，返回 [(col, header_text)]，按列号升序。
+
+    包含主结果列（cols["result"]）以及其余表头命中 result 别名词库的列
+    （如"rc9测试结果""S100测试结果"等轮次变体，复用打分+模糊匹配机制）。
+    已被其他字段占用的列不参与，避免把"预期结果""结果备注"等误纳入。
+    """
+    other_used = {c for f, c in cols.items() if f != "result"}
+    items = []
+    for col_idx in range(1, min(ws.max_column, 60) + 1):
+        text = _cell_str(ws.cell(row=header_row, column=col_idx).value)
+        if not text or col_idx in other_used:
+            continue
+        if col_idx == cols.get("result") or \
+                _field_score(_norm_header(text), "result") >= _MATCH_THRESHOLD:
             items.append((col_idx, text))
     return items
 
@@ -529,6 +551,7 @@ def _parse_workbook_unlocked(path):
     cases = []
     sheets_meta = []
     previews = []
+    result_columns_map = {}
     global_index = 0
     header_changed = False
 
@@ -544,7 +567,11 @@ def _parse_workbook_unlocked(path):
                 header_changed = True
 
             imgs = sheet_images.get(ws.title, [])
-            extra_cols = _extra_columns(ws, header_row, cols)
+            # 结果类列（多轮次）：随负载给出列名列表；从 extras 排除避免重复展示
+            result_cols = _result_columns(ws, header_row, cols)
+            result_columns_map[ws.title] = [h for _, h in result_cols]
+            extra_cols = _extra_columns(ws, header_row, cols,
+                                        exclude=[c for c, _ in result_cols])
             sheet_cases = []
             for row_idx in range(header_row + 1, ws.max_row + 1):
                 if not _is_real_case(ws, row_idx, cols, meta["kind"]):
@@ -559,6 +586,13 @@ def _parse_workbook_unlocked(path):
                     val = _cell_str(ws.cell(row=row_idx, column=col_idx).value)
                     if val:
                         extras.append({"header": header, "value": val})
+
+                # 各结果列取值：{列名: 值}（重复表头取首个，避免键覆盖）
+                results = {}
+                for col_idx, header in result_cols:
+                    if header not in results:
+                        results[header] = _cell_str(
+                            ws.cell(row=row_idx, column=col_idx).value)
 
                 case = {
                     "globalIndex": global_index,
@@ -577,6 +611,7 @@ def _parse_workbook_unlocked(path):
                     "priority": g("priority"),
                     "risk": g("risk"),
                     "result": g("result"),
+                    "results": results,
                     "bugId": g("bugId"),
                     "tester": g("tester"),
                     "note": g("note"),
@@ -627,6 +662,7 @@ def _parse_workbook_unlocked(path):
         "cases": cases,
         "sheets": sheets_meta,
         "previews": previews,
+        "resultColumns": result_columns_map,
         "progress": {"done": done, "total": len(cases)},
     }
     return payload, header_changed
@@ -657,13 +693,16 @@ def make_backup(path, backup_dir):
 
 
 def update_case(path, sheet, row_index, fields, expected_name=None,
-                result_col=None):
+                result_col=None, result_column=None):
     """写回单条用例的执行结果并原子保存。返回最新进度。
 
     fields: dict，键可为 result/bugId/tester/note/actual/foundTime；
     目标列按该 Sheet 的表头动态解析（多结果列时取首个）。
     matrix 页仅允许写回 result 单字段，需通过 result_col 指明目标结果列
     （多结果列对应不同测试条件），不补列、不改动其余内容。
+    result_column: 可选，功能/场景页 result 字段的目标结果列表头名
+    （测试轮次，如"rc10测试结果"）；未匹配到时回退主结果列，
+    其余字段不受影响。与矩阵页的 result_col（列号）互不相干。
     expected_name: 可选，前端所见的用例名（caseId/标题/场景；矩阵页为
     行首个非空单元格），用于校验目标行未因外部编辑而错位。
     校验失败或没有任何字段落地时抛 ValueError。
@@ -706,6 +745,10 @@ def update_case(path, sheet, row_index, fields, expected_name=None,
 
             _, cols = _ensure_extra_columns(ws, header_row, cols)
 
+            # 测试轮次：按表头名解析 result 的目标写入列（未匹配回退主列）
+            result_cols = (_result_columns(ws, header_row, cols)
+                           if result_column else [])
+
             # 校验目标行内容与页面所见一致，防止外部插/删行后写错行
             if expected_name:
                 def _val(field):
@@ -720,6 +763,9 @@ def update_case(path, sheet, row_index, fields, expected_name=None,
                 if key not in _WRITABLE_FIELDS:
                     continue
                 col = cols.get(key)
+                if key == "result" and result_column:
+                    col = next((c for c, h in result_cols
+                                if h == result_column), col)
                 if not col:
                     continue
                 _anchor_cell(ws, row_index, col).value = value if value != "" else None
@@ -729,6 +775,44 @@ def update_case(path, sheet, row_index, fields, expected_name=None,
 
             _atomic_save(wb, path)
             return _compute_progress(wb)
+        finally:
+            wb.close()
+
+
+def add_result_column(path, name):
+    """在所有可执行 Sheet（功能/场景）表头末尾统一新增一个结果列。
+
+    用于开启新一轮测试（如"rc11测试结果"）。校验：
+    - 列名非空且不超过 30 字；
+    - 须命中 result 别名打分（保证新列必然被识别为结果列）；
+    - 不得与任一可执行 Sheet 的现有结果列重名（归一化比较）。
+    校验失败抛 ValueError；文件被占用时由 _atomic_save 抛 OSError。
+    """
+    name = _cell_str(name)
+    if not name:
+        raise ValueError("列名不能为空")
+    if len(name) > 30:
+        raise ValueError("列名过长（最多 30 个字符）")
+    if _field_score(_norm_header(name), "result") < _MATCH_THRESHOLD:
+        raise ValueError('列名需包含"测试结果"等结果类关键词，如：rc11测试结果')
+    with _write_lock:
+        wb = openpyxl.load_workbook(path)
+        try:
+            targets = list(_iter_case_sheets(wb))
+            if not targets:
+                raise ValueError("该文件没有可执行的用例 Sheet")
+            norm_new = _norm_header(name).replace(" ", "")
+            for ws, meta in targets:
+                for _, header in _result_columns(
+                        ws, meta["headerRow"], meta["columns"]):
+                    if _norm_header(header).replace(" ", "") == norm_new:
+                        raise ValueError(
+                            "结果列已存在：%s（%s）" % (header, ws.title))
+            for ws, meta in targets:
+                header_row = meta["headerRow"]
+                col = _last_header_col(ws, header_row) + 1
+                ws.cell(row=header_row, column=col).value = name
+            _atomic_save(wb, path)
         finally:
             wb.close()
 
