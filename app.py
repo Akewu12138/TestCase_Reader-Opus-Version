@@ -8,6 +8,7 @@
 - 选中文件后原地读写以实现"实时同步回原始文件"，并在首次访问时生成备份。
 """
 
+import logging
 import os
 import shutil
 
@@ -323,6 +324,24 @@ def clear_results():
                     "progress": result["progress"]})
 
 
+@app.route("/api/sheet-image", methods=["GET"])
+def sheet_image():
+    """按需下发某 Sheet 的内嵌图片（解析负载只含 URL，不再内联 base64）。"""
+    sheet = request.args.get("sheet", "")
+    idx = request.args.get("idx", type=int)
+    path = STATE["current_path"]
+    if not path or not os.path.exists(path) or idx is None or idx < 0:
+        return jsonify({"error": "图片不存在"}), 404
+    item = excel_service.get_sheet_image(path, sheet, idx)
+    if not item:
+        return jsonify({"error": "图片不存在"}), 404
+    data, fmt = item
+    resp = app.response_class(data, mimetype="image/%s" % fmt)
+    # 同一文件指纹内内容不变，允许浏览器短期缓存，减少重复请求
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
+
+
 @app.route("/api/download", methods=["GET"])
 def download():
     path = STATE["current_path"]
@@ -336,4 +355,24 @@ if __name__ == "__main__":
     # 端口可通过环境变量 PORT 覆盖（默认 5000）；启动器与此保持一致。
     # macOS 的隔空播放接收器会占用 5000，此时可改用其他端口。
     port = int(os.environ.get("PORT", "5000"))
-    app.run(host="127.0.0.1", port=port)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    try:
+        from waitress import serve
+    except ImportError:
+        # 未安装 waitress 时回退开发服务器，保证双击启动器仍可用
+        app.run(host="127.0.0.1", port=port)
+    else:
+        # waitress 不打请求日志，用 after_request 补一份简易访问日志
+        access_log = logging.getLogger("access")
+
+        @app.after_request
+        def _log_request(resp):
+            access_log.info("%s %s -> %s", request.method,
+                            request.path, resp.status_code)
+            return resp
+
+        logging.getLogger("app").info(
+            "waitress 已启动: http://127.0.0.1:%s", port)
+        serve(app, host="127.0.0.1", port=port, threads=8)

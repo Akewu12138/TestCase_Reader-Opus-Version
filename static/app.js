@@ -470,6 +470,7 @@
       var img = document.createElement("img");
       img.className = "scene-img";
       img.src = src;
+      img.loading = "lazy";   // 独立端点惰性加载
       img.alt = "场景示意图 " + (idx + 1);
       thumb.appendChild(img);
       thumb.addEventListener("click", function () { openLightbox(images, idx); });
@@ -1193,7 +1194,7 @@
       var idText = it.c.caseId || it.c.name || "";
       if (idText && idText !== (it.c.title || it.c.scenario || "")) hasRealId = true;
     });
-    items.forEach(function (it, seq) {
+    function buildRow(it, seq) {
       var c = it.c;
       var tr = document.createElement("tr");
       if (it.index === state.index) tr.className = "current";
@@ -1252,8 +1253,22 @@
       }
       tr.appendChild(tdNote);
 
-      tbody.appendChild(tr);
-    });
+      return tr;
+    }
+
+    // 分批渲染：首屏同步渲染一批，其余 requestAnimationFrame 逐批追加，
+    // 大 Sheet（数百上千行）不再一次性构建 DOM 阻塞交互
+    var CHUNK = 150;
+    var token = renderTable._token = (renderTable._token || 0) + 1;
+    function appendChunk(start) {
+      if (token !== renderTable._token) return;  // 已被新一次渲染取代
+      var end = Math.min(start + CHUNK, items.length);
+      for (var i = start; i < end; i++) tbody.appendChild(buildRow(items[i], i));
+      if (end < items.length) {
+        window.requestAnimationFrame(function () { appendChunk(end); });
+      }
+    }
+    appendChunk(0);
     table.appendChild(tbody);
     el.tableWrap.appendChild(table);
 
@@ -1668,12 +1683,13 @@
       gh.className = "section-title";
       gh.textContent = "示意图 (" + images.length + ")";
       el.previewBody.appendChild(gh);
-      var urls = images.map(function (im) { return im.dataUrl; });
+      var urls = images.map(function (im) { return im.src; });
       images.forEach(function (im, idx) {
         var fig = document.createElement("figure");
         fig.className = "preview-fig";
         var img = document.createElement("img");
-        img.src = im.dataUrl;
+        img.src = im.src;
+        img.loading = "lazy";   // 独立端点惰性加载，滚动到可视区才请求
         img.alt = "示意图";
         img.title = "点击放大查看";
         img.addEventListener("click", function () { openLightbox(urls, idx); });

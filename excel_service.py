@@ -14,7 +14,6 @@
 - 将执行结果原子写回 xlsx，并在首次加载时生成备份。
 """
 
-import base64
 import difflib
 import json
 import os
@@ -23,6 +22,7 @@ import shutil
 import tempfile
 from datetime import datetime
 from threading import Lock
+from urllib.parse import quote
 
 import openpyxl
 from openpyxl.cell.cell import MergedCell
@@ -87,6 +87,15 @@ _ALIAS_CONFIG_PATH = os.path.join(
 
 # 允许前端提交的字段集合（写回时按列映射）
 _WRITABLE_FIELDS = ("result", "bugId", "tester", "note", "actual", "foundTime")
+
+# 解析扫描范围上限（防御异常宽/高的表格拖慢解析，正常用例文件远小于此）
+_MAX_SCAN_COLS = 60        # 字段列解析/结果列识别扫描的最大列数
+_HEADER_SCAN_ROWS = 6      # 表头行探测范围：只在前若干行内找
+_HEADER_SCAN_COLS = 40     # 表头行探测时每行统计的最大列数
+_MATRIX_SCAN_ROWS = 40     # 矩阵启发式判定扫描的正文行数
+_MATRIX_SCAN_COLS = 30     # 矩阵启发式判定扫描的列数
+_TITLE_SCAN_COLS = 10      # Sheet 展示标题在表头上方扫描的列数
+_PREVIEW_MAX_ROWS = 200    # 预览网格/矩阵结果列判定读取的最大行数
 
 # 写文件锁，避免并发写回损坏文件
 _write_lock = Lock()
@@ -173,12 +182,12 @@ def _find_header_row(ws):
 
     要求该行至少含 2 个非空单元格，避免把标题行/空行当表头。
     """
-    max_scan = min(ws.max_row, 6)
+    max_scan = min(ws.max_row, _HEADER_SCAN_ROWS)
     best_row = None
     best_count = 0
     for row_idx in range(1, max_scan + 1):
         count = 0
-        for col_idx in range(1, min(ws.max_column, 40) + 1):
+        for col_idx in range(1, min(ws.max_column, _HEADER_SCAN_COLS) + 1):
             if _cell_str(ws.cell(row=row_idx, column=col_idx).value):
                 count += 1
         if count > best_count:
@@ -196,7 +205,7 @@ def _resolve_columns(ws, header_row):
     贪心分配：保证一列只归一个字段、一字段只取最优（同分取最左）命中列，
     多结果列时自然取首个。
     """
-    max_col = min(ws.max_column, 60)
+    max_col = min(ws.max_column, _MAX_SCAN_COLS)
     candidates = []  # (score, field_priority, col, field)
     for col_idx in range(1, max_col + 1):
         htext = _norm_header(ws.cell(row=header_row, column=col_idx).value)
@@ -228,7 +237,7 @@ def _extra_columns(ws, header_row, cols, exclude=None):
     if exclude:
         used |= set(exclude)
     items = []
-    for col_idx in range(1, min(ws.max_column, 60) + 1):
+    for col_idx in range(1, min(ws.max_column, _MAX_SCAN_COLS) + 1):
         if col_idx in used:
             continue
         text = _cell_str(ws.cell(row=header_row, column=col_idx).value)
@@ -246,7 +255,7 @@ def _result_columns(ws, header_row, cols):
     """
     other_used = {c for f, c in cols.items() if f != "result"}
     items = []
-    for col_idx in range(1, min(ws.max_column, 60) + 1):
+    for col_idx in range(1, min(ws.max_column, _MAX_SCAN_COLS) + 1):
         text = _cell_str(ws.cell(row=header_row, column=col_idx).value)
         if not text or col_idx in other_used:
             continue
@@ -274,7 +283,7 @@ def _effective_result_col(result_cols, target_name):
 def _last_header_col(ws, header_row):
     """表头行最右侧非空列号。"""
     last = 0
-    for col_idx in range(1, min(ws.max_column, 60) + 1):
+    for col_idx in range(1, min(ws.max_column, _MAX_SCAN_COLS) + 1):
         if _cell_str(ws.cell(row=header_row, column=col_idx).value):
             last = col_idx
     return last
@@ -288,8 +297,8 @@ def _name_is_info(name):
 def _looks_like_matrix(ws, header_row):
     """启发式：正文中出现多个结果类取值(PASS/FAIL/...)则视为结果矩阵。"""
     hits = 0
-    row_end = min(ws.max_row, header_row + 40)
-    col_end = min(ws.max_column, 30)
+    row_end = min(ws.max_row, header_row + _MATRIX_SCAN_ROWS)
+    col_end = min(ws.max_column, _MATRIX_SCAN_COLS)
     for r in range(header_row + 1, row_end + 1):
         for c in range(1, col_end + 1):
             v = _cell_str(ws.cell(row=r, column=c).value).upper()
@@ -303,7 +312,7 @@ def _looks_like_matrix(ws, header_row):
 def _sheet_title(ws, header_row):
     """Sheet 展示标题：表头行之上的首个非空单元格，否则用 Sheet 名。"""
     for row_idx in range(1, header_row):
-        for col_idx in range(1, min(ws.max_column, 10) + 1):
+        for col_idx in range(1, min(ws.max_column, _TITLE_SCAN_COLS) + 1):
             t = _cell_str(ws.cell(row=row_idx, column=col_idx).value)
             if t:
                 return t
@@ -430,11 +439,67 @@ def _img_anchor(img):
     return 0, 0
 
 
-def _extract_sheet_images(path):
-    """提取每个 Sheet 的内嵌锚定图片，返回 {sheet: [{row, col, dataUrl}]}。
+def _img_fmt(img):
+    """图片 MIME 子类型（png/jpeg/...），未知按 png 处理。"""
+    fmt = (getattr(img, "format", None) or "png").lower()
+    return "jpeg" if fmt == "jpg" else fmt
+
+
+def _sheet_image_meta(wb):
+    """读取各 Sheet 内嵌图片的锚点元信息（不取字节，不消费图片流）。
+
+    返回 {sheet: [{row, col, src}]}，src 为惰性加载端点 URL，
+    idx 与 ws._images 顺序一一对应（get_sheet_image 按同序取字节）。
+    图片字节不再随解析负载下发，大幅缩小 JSON 体积与解析内存。
+    """
+    result = {}
+    for ws in wb.worksheets:
+        items = []
+        for idx, img in enumerate(getattr(ws, "_images", None) or []):
+            row, col = _img_anchor(img)
+            items.append({
+                "row": row,
+                "col": col,
+                "src": "/api/sheet-image?sheet=%s&idx=%d"
+                       % (quote(ws.title), idx),
+            })
+        if items:
+            result[ws.title] = items
+    return result
+
+
+# 图片字节缓存：abspath -> ((mtime_ns, size), {sheet: [(bytes|None, fmt)]})
+# 首次请求时整册提取一次，同指纹内直接命中；图片体积大，仅保留少量文件。
+_image_cache = {}
+_IMAGE_CACHE_MAX = 2
+
+
+def get_sheet_image(path, sheet, idx):
+    """按需取某 Sheet 第 idx 张内嵌图片，返回 (bytes, fmt) 或 None。
+
+    idx 对应 _sheet_image_meta 生成的顺序；文件变化（指纹不符）自动重提。
+    """
+    key = os.path.abspath(path)
+    with _write_lock:
+        st = os.stat(path)
+        fingerprint = (st.st_mtime_ns, st.st_size)
+        hit = _image_cache.get(key)
+        if not hit or hit[0] != fingerprint:
+            if len(_image_cache) >= _IMAGE_CACHE_MAX and key not in _image_cache:
+                _image_cache.pop(next(iter(_image_cache)))
+            _image_cache[key] = (fingerprint, _extract_all_images(path))
+        images = _image_cache[key][1].get(sheet) or []
+        if 0 <= idx < len(images) and images[idx][0]:
+            return images[idx]
+        return None
+
+
+def _extract_all_images(path):
+    """整册提取内嵌图片字节，返回 {sheet: [(bytes|None, fmt)]}。
 
     使用独立的工作簿实例读取：调用 img._data() 会消费底层图片流，若在
     随后需要保存的同一工作簿上执行会导致 save 失败/丢图，故单独加载再丢弃。
+    每张图占一个槽位（取不到字节记 None），保证与锚点元信息的 idx 对齐。
     """
     result = {}
     try:
@@ -443,22 +508,9 @@ def _extract_sheet_images(path):
         return result
     try:
         for ws in wb.worksheets:
-            imgs = getattr(ws, "_images", None) or []
             items = []
-            for img in imgs:
-                data = _img_bytes(img)
-                if not data:
-                    continue
-                fmt = (getattr(img, "format", None) or "png").lower()
-                if fmt == "jpg":
-                    fmt = "jpeg"
-                row, col = _img_anchor(img)
-                b64 = base64.b64encode(data).decode("ascii")
-                items.append({
-                    "row": row,
-                    "col": col,
-                    "dataUrl": "data:image/%s;base64,%s" % (fmt, b64),
-                })
+            for img in getattr(ws, "_images", None) or []:
+                items.append((_img_bytes(img), _img_fmt(img)))
             if items:
                 result[ws.title] = items
     finally:
@@ -470,7 +522,8 @@ def _extract_sheet_images(path):
 _PREVIEW_MAX_COLS = 30
 
 
-def _sheet_grid(ws, header_row, max_rows=200, max_cols=_PREVIEW_MAX_COLS):
+def _sheet_grid(ws, header_row, max_rows=_PREVIEW_MAX_ROWS,
+                max_cols=_PREVIEW_MAX_COLS):
     """把 Sheet 内容读为行列表（用于预览）。
 
     每行为 {"r": 真实行号, "cells": [...]}，保留行号以支持矩阵页结果写回定位。
@@ -494,7 +547,7 @@ def _sheet_grid(ws, header_row, max_rows=200, max_cols=_PREVIEW_MAX_COLS):
 
 def _matrix_row_fingerprint(ws, row_idx):
     """矩阵行指纹：该行首个非空单元格文本，用于写回前校验行未错位。"""
-    for col_idx in range(1, min(ws.max_column, 60) + 1):
+    for col_idx in range(1, min(ws.max_column, _MAX_SCAN_COLS) + 1):
         v = _cell_str(ws.cell(row=row_idx, column=col_idx).value)
         if v:
             return v
@@ -510,7 +563,7 @@ def _matrix_result_cols(ws, header_row, max_cols=_PREVIEW_MAX_COLS):
        （覆盖"避障/乘梯"这类表头为条件名、正文为 通过/失败 的列）。
     """
     cols = []
-    row_end = min(ws.max_row, header_row + 200)
+    row_end = min(ws.max_row, header_row + _PREVIEW_MAX_ROWS)
     for col_idx in range(1, min(ws.max_column, max_cols) + 1):
         htext = _cell_str(ws.cell(row=header_row, column=col_idx).value).lower()
         if "备注" in htext or "note" in htext:
@@ -582,109 +635,126 @@ def parse_workbook(path):
         return dict(payload), header_changed
 
 
+def _collect_sheet_cases(ws, meta, imgs, start_index):
+    """解析一个功能/场景页的全部用例行。
+
+    返回 (header_changed, cases, round_headers)：
+    - cases 的 globalIndex 从 start_index 起连续编号；
+    - round_headers 为该页全部结果类列的表头名列表（多轮次候选）。
+    """
+    header_row = meta["headerRow"]
+    cols = meta["columns"]
+    header_changed, cols = _ensure_extra_columns(ws, header_row, cols)
+
+    # 结果类列（多轮次）：随负载给出列名列表；从 extras 排除避免重复展示
+    result_cols = _result_columns(ws, header_row, cols)
+    extra_cols = _extra_columns(ws, header_row, cols,
+                                exclude=[c for c, _ in result_cols])
+    sheet_cases = []
+    for row_idx in range(header_row + 1, ws.max_row + 1):
+        if not _is_real_case(ws, row_idx, cols, meta["kind"]):
+            continue
+
+        def g(field):
+            col = cols.get(field)
+            return _cell_str(ws.cell(row=row_idx, column=col).value) if col else ""
+
+        extras = []
+        for col_idx, header in extra_cols:
+            val = _cell_str(ws.cell(row=row_idx, column=col_idx).value)
+            if val:
+                extras.append({"header": header, "value": val})
+
+        # 各结果列取值：{列名: 值}（重复表头取首个，避免键覆盖）
+        results = {}
+        for col_idx, header in result_cols:
+            if header not in results:
+                results[header] = _cell_str(
+                    ws.cell(row=row_idx, column=col_idx).value)
+
+        case = {
+            "globalIndex": start_index + len(sheet_cases),
+            "sheet": ws.title,
+            "sheetTitle": meta["title"],
+            "kind": meta["kind"],
+            "rowIndex": row_idx,
+            "caseId": g("caseId"),
+            "module": g("module"),
+            "scenario": g("scenario"),
+            "desc": g("desc"),
+            "title": g("title"),
+            "precondition": g("precondition"),
+            "steps": g("steps"),
+            "expected": g("expected"),
+            "priority": g("priority"),
+            "risk": g("risk"),
+            "result": g("result"),
+            "results": results,
+            "bugId": g("bugId"),
+            "tester": g("tester"),
+            "note": g("note"),
+            "actual": g("actual"),
+            "foundTime": g("foundTime"),
+            "extras": extras,
+            "images": [],
+        }
+        case["name"] = case["caseId"] or case["title"] or case["scenario"] or "(未命名)"
+        sheet_cases.append(case)
+
+    # 场景页：把图片按锚点行归属到覆盖该行区间的用例
+    if meta["kind"] == "scenario" and imgs and sheet_cases:
+        for i, case in enumerate(sheet_cases):
+            start_row = case["rowIndex"]
+            end_row = (sheet_cases[i + 1]["rowIndex"]
+                       if i + 1 < len(sheet_cases) else ws.max_row + 1)
+            case["images"] = [im["src"] for im in imgs
+                              if start_row <= im["row"] < end_row]
+
+    round_headers = [h for _, h in result_cols]
+    return header_changed, sheet_cases, round_headers
+
+
+def _build_preview(ws, meta, images):
+    """matrix / info 页的只读预览负载（矩阵页各结果列可行内编辑）。"""
+    header_row = meta["headerRow"] or 1
+    result_cols = (_matrix_result_cols(ws, header_row)
+                   if meta["kind"] == "matrix" else [])
+    return {
+        "sheet": ws.title,
+        "kind": meta["kind"],
+        "title": meta["title"],
+        "rows": _sheet_grid(ws, header_row),
+        "headerRow": header_row,
+        "resultCols": result_cols,
+        "images": images,
+    }
+
+
 def _parse_workbook_unlocked(path):
     wb = openpyxl.load_workbook(path)
-    sheet_images = _extract_sheet_images(path)
+    # 只读锚点元信息，图片字节由 /api/sheet-image 惰性提供
+    sheet_images = _sheet_image_meta(wb)
 
     cases = []
     sheets_meta = []
     previews = []
     result_columns_map = {}
-    global_index = 0
     header_changed = False
 
     for ws in wb.worksheets:
         meta = classify_sheet(ws)
         sheets_meta.append({"name": ws.title, "kind": meta["kind"], "title": meta["title"]})
+        imgs = sheet_images.get(ws.title, [])
 
         if meta["kind"] in ("functional", "scenario"):
-            header_row = meta["headerRow"]
-            cols = meta["columns"]
-            changed, cols = _ensure_extra_columns(ws, header_row, cols)
+            changed, sheet_cases, round_headers = _collect_sheet_cases(
+                ws, meta, imgs, len(cases))
             if changed:
                 header_changed = True
-
-            imgs = sheet_images.get(ws.title, [])
-            # 结果类列（多轮次）：随负载给出列名列表；从 extras 排除避免重复展示
-            result_cols = _result_columns(ws, header_row, cols)
-            result_columns_map[ws.title] = [h for _, h in result_cols]
-            extra_cols = _extra_columns(ws, header_row, cols,
-                                        exclude=[c for c, _ in result_cols])
-            sheet_cases = []
-            for row_idx in range(header_row + 1, ws.max_row + 1):
-                if not _is_real_case(ws, row_idx, cols, meta["kind"]):
-                    continue
-
-                def g(field):
-                    col = cols.get(field)
-                    return _cell_str(ws.cell(row=row_idx, column=col).value) if col else ""
-
-                extras = []
-                for col_idx, header in extra_cols:
-                    val = _cell_str(ws.cell(row=row_idx, column=col_idx).value)
-                    if val:
-                        extras.append({"header": header, "value": val})
-
-                # 各结果列取值：{列名: 值}（重复表头取首个，避免键覆盖）
-                results = {}
-                for col_idx, header in result_cols:
-                    if header not in results:
-                        results[header] = _cell_str(
-                            ws.cell(row=row_idx, column=col_idx).value)
-
-                case = {
-                    "globalIndex": global_index,
-                    "sheet": ws.title,
-                    "sheetTitle": meta["title"],
-                    "kind": meta["kind"],
-                    "rowIndex": row_idx,
-                    "caseId": g("caseId"),
-                    "module": g("module"),
-                    "scenario": g("scenario"),
-                    "desc": g("desc"),
-                    "title": g("title"),
-                    "precondition": g("precondition"),
-                    "steps": g("steps"),
-                    "expected": g("expected"),
-                    "priority": g("priority"),
-                    "risk": g("risk"),
-                    "result": g("result"),
-                    "results": results,
-                    "bugId": g("bugId"),
-                    "tester": g("tester"),
-                    "note": g("note"),
-                    "actual": g("actual"),
-                    "foundTime": g("foundTime"),
-                    "extras": extras,
-                    "images": [],
-                }
-                case["name"] = case["caseId"] or case["title"] or case["scenario"] or "(未命名)"
-                cases.append(case)
-                sheet_cases.append(case)
-                global_index += 1
-
-            # 场景页：把图片按锚点行归属到覆盖该行区间的用例
-            if meta["kind"] == "scenario" and imgs and sheet_cases:
-                for i, case in enumerate(sheet_cases):
-                    start_row = case["rowIndex"]
-                    end_row = (sheet_cases[i + 1]["rowIndex"]
-                               if i + 1 < len(sheet_cases) else ws.max_row + 1)
-                    case["images"] = [im["dataUrl"] for im in imgs
-                                      if start_row <= im["row"] < end_row]
+            cases.extend(sheet_cases)
+            result_columns_map[ws.title] = round_headers
         else:
-            # matrix / info：预览（矩阵页各结果列可行内编辑，其余只读）
-            header_row = meta["headerRow"] or 1
-            result_cols = (_matrix_result_cols(ws, header_row)
-                           if meta["kind"] == "matrix" else [])
-            previews.append({
-                "sheet": ws.title,
-                "kind": meta["kind"],
-                "title": meta["title"],
-                "rows": _sheet_grid(ws, header_row),
-                "headerRow": header_row,
-                "resultCols": result_cols,
-                "images": sheet_images.get(ws.title, []),
-            })
+            previews.append(_build_preview(ws, meta, imgs))
 
     if header_changed:
         try:

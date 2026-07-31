@@ -12,6 +12,7 @@
 - _effective_result_col 回退口径单源（#7）
 - parse_workbook (mtime,size) 缓存命中与失效（#6①）
 - 写接口 fileName 会话隔离 409（#4，走 Flask test_client）
+- 图片惰性加载：锚点 URL 元信息 / get_sheet_image / 端点（#6②）
 
 运行：python -m unittest discover tests
 夹具全部用 openpyxl 现场生成微型 xlsx，不依赖真实用例文件。
@@ -364,6 +365,68 @@ class TestSessionIsolation(unittest.TestCase):
             "sheet": "功能A", "rowIndex": 3, "result": "NA",
             "expectedName": "TC1"})
         self.assertEqual(r.status_code, 200)
+
+
+class TestImageLazyLoading(unittest.TestCase):
+    """#6② 图片惰性加载：解析只下发锚点 URL，字节由端点按需提供。"""
+
+    def setUp(self):
+        from PIL import Image as PILImage
+        from openpyxl.drawing.image import Image as XLImage
+        self.tmp = tempfile.mkdtemp()
+        png = os.path.join(self.tmp, "p.png")
+        PILImage.new("RGB", (2, 2), (255, 0, 0)).save(png)
+        self.path = os.path.join(self.tmp, "img.xlsx")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        ws = _make_functional_sheet(wb, "功能A", rows=[
+            ("TC1", "用例一", "步骤", "预期", ""),
+        ])
+        ws.add_image(XLImage(png), "H3")
+        wb.save(self.path)
+        wb.close()
+
+    def tearDown(self):
+        es._parse_cache.clear()
+        es._image_cache.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_meta_src_is_lazy_url(self):
+        wb = openpyxl.load_workbook(self.path)
+        meta = es._sheet_image_meta(wb)
+        wb.close()
+        self.assertIn("功能A", meta)
+        item = meta["功能A"][0]
+        self.assertTrue(item["src"].startswith("/api/sheet-image?sheet="))
+        self.assertTrue(item["src"].endswith("&idx=0"))
+        self.assertEqual(item["row"], 3)  # 锚点 H3 → 第 3 行
+
+    def test_get_sheet_image_returns_bytes(self):
+        item = es.get_sheet_image(self.path, "功能A", 0)
+        self.assertIsNotNone(item)
+        data, fmt = item
+        self.assertEqual(fmt, "png")
+        self.assertTrue(data.startswith(b"\x89PNG"))
+        # 同指纹二次请求命中缓存（对象同一）
+        self.assertIs(es.get_sheet_image(self.path, "功能A", 0)[0], data)
+
+    def test_bad_index_or_sheet_returns_none(self):
+        self.assertIsNone(es.get_sheet_image(self.path, "功能A", 5))
+        self.assertIsNone(es.get_sheet_image(self.path, "不存在", 0))
+
+    def test_endpoint_serves_image(self):
+        import app as app_module
+        saved = dict(app_module.STATE)
+        app_module.STATE["current_path"] = self.path
+        try:
+            client = app_module.app.test_client()
+            r = client.get("/api/sheet-image?sheet=功能A&idx=0")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.mimetype, "image/png")
+            r2 = client.get("/api/sheet-image?sheet=功能A&idx=9")
+            self.assertEqual(r2.status_code, 404)
+        finally:
+            app_module.STATE.update(saved)
 
 
 if __name__ == "__main__":

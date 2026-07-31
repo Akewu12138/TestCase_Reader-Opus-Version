@@ -1,7 +1,10 @@
-flask>=2.0
-openpyxl>=3.0
+flask>=2.0,<4
+# 图片提取依赖 openpyxl 私有 API（ws._images / img._data），升级大版本需回归验证
+openpyxl>=3.0,<3.2
 # Pillow 必需：openpyxl 只有在安装 Pillow 时才会读取并回写内嵌图片，
 # 否则加载即丢弃图片、保存时会抹掉示意图（导致场景/矩阵预览无图且原文件损坏）。
-Pillow>=9.0
+Pillow>=9.0,<14
 # xlrd 仅用于读取旧版 .xls（上传时自动转换为 .xlsx）
 xlrd==2.0.1
+# 生产级 WSGI 服务器（替代 Flask 开发服务器；未安装时自动回退 app.run）
+waitress>=2.1,<4
