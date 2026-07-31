@@ -41,12 +41,25 @@ body {
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.topbar-left { display: flex; align-items: baseline; gap: 12px; }
-.brand { font-weight: 700; font-size: 18px; }
-.file-name { color: var(--text-soft); font-size: 13px; }
-.topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 左侧可收缩：空间不足时文件名先省略，优先保证右侧控件单行 */
+.topbar-left { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.brand { font-weight: 700; font-size: 18px; white-space: nowrap; }
+.file-name {
+  color: var(--text-soft);
+  font-size: 13px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: none; }
+/* 1440 以下顶栏空间紧张：压缩文件名、隐藏次要会话信息，保证控件区单行（A1 验收：1366 不换行） */
+@media (max-width: 1440px) {
+  .file-name { max-width: 140px; }
+  .session-info { display: none; }
+}
 .sheet-select {
-  max-width: 220px;
+  max-width: 170px;
   padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -55,7 +68,7 @@ body {
   color: var(--text);
 }
 /* 顶栏测试轮次（结果写入列）选择器 */
-.round-select { max-width: 180px; }
+.round-select { max-width: 150px; }
 .round-select.round-missing {
   border-color: #d9a406;
   box-shadow: 0 0 0 2px rgba(217, 164, 6, 0.25);
@@ -161,6 +174,18 @@ body {
 /* 执行区 */
 .exec { padding-top: 20px; }
 .result-buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+/* 自动跳转开关：结果按钮下方的轻量偏好项 */
+.auto-advance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+  cursor: pointer;
+  margin: -10px 0 18px;
+  user-select: none;
+}
+.auto-advance input { accent-color: var(--primary); cursor: pointer; }
 .rbtn {
   flex: 1 1 120px;
   padding: 16px 12px;
@@ -201,9 +226,61 @@ body {
   resize: vertical;
 }
 .field-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.12); }
+/* 失败快捷登记：BugID 待补录高亮提示（录入或切换用例后撤去） */
+.field-input.attn { border-color: var(--fail); box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.15); }
 .field-row.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .time-row { display: flex; gap: 10px; align-items: center; }
 .time-row .field-input { flex: 1; }
+
+/* ===== 宽屏布局：非初始页放宽主区，执行卡片左读右写双栏 ===== */
+body.wide-view .main { max-width: 1520px; }
+body.wide-view .progress-wrap { max-width: 1520px; }
+body.wide-view .filter-panel { max-width: 1480px; }
+
+/* 前置条件块：与预期结果（绿）同构的视觉分块（蓝），强化区块层次 */
+#precondition {
+  background: #f7f9fd;
+  border-left: 3px solid var(--primary);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+@media (min-width: 1200px) {
+  body.wide-view .card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 0 40px;
+    align-items: start;
+    padding: 24px 36px 28px;
+  }
+  .card-main { min-width: 0; }
+  /* 执行区右侧常驻：阅读长步骤时无需滚回底部即可标记结果 */
+  .card-side {
+    position: sticky;
+    top: 76px; /* 避开 sticky 顶栏 */
+    max-height: calc(100vh - 180px); /* 超高时侧栏自身内滚，保证全部字段可达 */
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    padding-left: 32px;
+  }
+  .card-side .exec { padding-top: 4px; }
+  /* 头部与分区压缩，提升首屏信息密度 */
+  body.wide-view .case-title { font-size: 22px; }
+  body.wide-view .card-head { padding-bottom: 14px; }
+  body.wide-view .section { padding: 14px 0; }
+  /* 侧栏内结果按钮 2×2 排布，避免四按钮挤成一列过窄 */
+  .card-side .rbtn { flex: 1 1 40%; padding: 14px 10px; }
+}
+
+/* 超宽屏：测试步骤与预期结果并排对照阅读（任一分区隐藏时自动占满整行） */
+@media (min-width: 1500px) {
+  body.wide-view .read-duo {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 0 32px;
+    align-items: start;
+  }
+}
 
 /* 按钮 */
 .btn {
@@ -264,7 +341,109 @@ body {
 .detail-title { font-size: 24px; margin: 0 0 4px; }
 .detail-summary { color: var(--text-soft); font-size: 14px; }
 
+/* 轮次执行仪表盘（详情页顶部） */
+.dashboard { padding: 16px 0 18px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.dash-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-soft);
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+.dash-body { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.dash-donut {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  position: relative;
+  flex: none;
+  background: #e7ebf3;
+}
+.dash-donut-hole {
+  position: absolute;
+  inset: 16px;
+  background: var(--card-bg);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.dash-pct { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.dash-sub { font-size: 12px; color: var(--text-soft); }
+.dash-stats { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; max-width: 340px; }
+.dash-stat {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dash-fails { flex: 1; min-width: 260px; }
+.dash-fails-title { font-size: 13px; font-weight: 700; color: var(--text-soft); margin-bottom: 8px; }
+.dash-fails-empty { font-size: 14px; color: var(--pass); }
+.dash-fail-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+.dash-fail-name {
+  width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  flex: none;
+}
+.dash-fail-bar { flex: 1; height: 8px; background: #f0f2f6; border-radius: 999px; overflow: hidden; display: block; }
+.dash-fail-fill { display: block; height: 100%; background: var(--fail); border-radius: 999px; }
+.dash-fail-num { width: 26px; font-weight: 700; color: var(--fail); flex: none; }
+
+/* 快捷键速查浮层 */
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(18, 22, 30, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.help-panel {
+  width: 100%;
+  max-width: 440px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(18, 22, 30, 0.3);
+  padding: 20px 24px 24px;
+}
+.help-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.help-title { font-size: 18px; margin: 0; }
+.help-head .help-close { position: static; background: transparent; border: none; color: var(--text-soft); font-size: 26px; cursor: pointer; }
+.help-head .help-close:hover { color: var(--text); }
+.help-list { display: flex; flex-direction: column; gap: 12px; }
+.help-row { display: flex; align-items: center; gap: 14px; font-size: 14px; }
+.help-keys { display: inline-flex; gap: 4px; min-width: 120px; flex: none; }
+.help-keys kbd {
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: #f7f9fd;
+  color: var(--text);
+}
+.help-tip { font-size: 12px; color: var(--text-soft); margin-top: 4px; }
+
 .sheet-groups { display: flex; flex-direction: column; gap: 12px; }
+/* 详情页"参考资料"分区标题：只读预览组统一收尾 */
+.sg-ref-title {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-soft);
+  letter-spacing: 0.5px;
+}
 .sheet-group { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .sheet-group-header {
   width: 100%;
@@ -360,8 +539,60 @@ body {
 .result-menu-item:hover { filter: brightness(0.94); }
 
 /* 顶栏会话信息 / 执行控件容器 */
-.session-info { font-size: 13px; color: var(--text-soft); white-space: nowrap; }
+.session-info {
+  font-size: 13px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .exec-controls { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 顶栏三组信息架构：组内紧凑、组间分隔线 */
+.tb-group { display: inline-flex; align-items: center; gap: 8px; }
+.tb-sep { width: 1px; height: 22px; background: var(--border); flex: none; }
+.tb-icon { padding: 8px 13px; font-weight: 700; }
+.tb-more { position: relative; display: inline-flex; }
+.more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(31, 39, 51, 0.18);
+}
+.more-item {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.more-item:hover { background: #f5f7fc; }
+/* 危险菜单项：清除本轮结果 */
+.more-item-danger { color: var(--fail); }
+.more-item-danger:hover { background: rgba(229, 72, 77, 0.08); }
+
+/* 清除确认弹窗（复用 help-overlay 遮罩/面板骨架） */
+.confirm-panel { max-width: 400px; }
+.confirm-desc { font-size: 15px; margin: 14px 0 10px; line-height: 1.6; }
+.confirm-note { font-size: 12px; color: var(--text-soft); margin: 0 0 18px; line-height: 1.6; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-danger { background: var(--fail); border-color: var(--fail); }
 
 /* 初始配置页 */
 .setup-view {
@@ -572,7 +803,15 @@ body {
   text-align: left;
 }
 .ct-link:hover { text-decoration: underline; }
-.ct-id .ct-link { font-family: ui-monospace, monospace; }
+.ct-id .ct-link {
+  font-family: ui-monospace, monospace;
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 .ct-title { min-width: 200px; }
 .ct-module, .ct-pri { white-space: nowrap; color: var(--text-soft); }
 .ct-res { white-space: nowrap; }

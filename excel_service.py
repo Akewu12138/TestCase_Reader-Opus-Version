@@ -817,6 +817,45 @@ def add_result_column(path, name):
             wb.close()
 
 
+def clear_result_column(path, column_name):
+    """批量清空所有可执行 Sheet 中当前轮次结果列的用例结果。
+
+    column_name: 目标结果列表头名（测试轮次）；每个 Sheet 按与前端
+    effectiveColFor 一致的口径解析——表头匹配则用之，否则回退该
+    Sheet 首个结果列，保证"清的就是页面上看到的"。空串即回退语义。
+    仅清空真实用例行（跳过分组标题/空行），其余字段与其他轮次列不动。
+    返回 {"cleared": N, "progress": {...}}。
+    """
+    target_name = _cell_str(column_name)
+    with _write_lock:
+        wb = openpyxl.load_workbook(path)
+        try:
+            targets = list(_iter_case_sheets(wb))
+            if not targets:
+                raise ValueError("该文件没有可执行的用例 Sheet")
+            cleared = 0
+            for ws, meta in targets:
+                header_row = meta["headerRow"]
+                cols = meta["columns"]
+                result_cols = _result_columns(ws, header_row, cols)
+                if not result_cols:
+                    continue
+                col = next((c for c, h in result_cols if h == target_name),
+                           result_cols[0][0])
+                for row_idx in range(header_row + 1, ws.max_row + 1):
+                    if not _is_real_case(ws, row_idx, cols, meta["kind"]):
+                        continue
+                    cell = _anchor_cell(ws, row_idx, col)
+                    if _cell_str(cell.value):
+                        cell.value = None
+                        cleared += 1
+            if cleared:
+                _atomic_save(wb, path)
+            return {"cleared": cleared, "progress": _compute_progress(wb)}
+        finally:
+            wb.close()
+
+
 def _compute_progress(wb):
     """统计可执行用例的完成进度，与 parse_workbook 口径一致。"""
     done = 0

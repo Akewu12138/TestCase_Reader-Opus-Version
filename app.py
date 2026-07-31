@@ -265,6 +265,31 @@ def create_result_column():
     return jsonify({"ok": True, "name": name})
 
 
+@app.route("/api/results/clear", methods=["POST"])
+def clear_results():
+    """批量清空当前轮次结果列（回归老用例前的一键重置）。"""
+    data = request.get_json(silent=True) or {}
+    result_column = str(data.get("resultColumn") or "").strip()
+    path = STATE["current_path"]
+    if not path or not os.path.exists(path):
+        return jsonify({"error": "当前文件不存在"}), 404
+    # 破坏性操作前单独留档一份即时备份（不依赖会话级首次备份）
+    try:
+        excel_service.make_backup(path, BACKUP_DIR)
+    except Exception as exc:
+        app.logger.warning("清除前备份失败: %s", exc)
+    try:
+        result = excel_service.clear_result_column(path, result_column)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except OSError:
+        return jsonify({"error": "写入失败：请先关闭正在打开该 Excel 的程序后重试"}), 400
+    except Exception as exc:
+        return jsonify({"error": "清除失败: %s" % exc}), 500
+    return jsonify({"ok": True, "cleared": result["cleared"],
+                    "progress": result["progress"]})
+
+
 @app.route("/api/download", methods=["GET"])
 def download():
     path = STATE["current_path"]

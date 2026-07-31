@@ -25,6 +25,7 @@
     selectedRound: "",        // 当前选中的结果列表头名（全局工作模式）
     filter: emptyFilter(),    // 筛选条件（激活后全局工作集收窄）
     filterOpen: false,        // 筛选面板开合状态
+    autoAdvance: true,        // 标记通过/跳过后自动跳下一条（可关，跨会话记忆）
   };
 
   // 测试结果显示文案与样式
@@ -56,14 +57,28 @@
     "previewView", "previewBack", "previewTitle", "previewBody",
     "readerMask", "readerPanel", "readerCol", "readerRow", "readerBody", "readerClose",
     "lightbox", "lbClose", "lbPrev", "lbNext", "lbImg", "lbCounter",
+    "helpBtn", "helpOverlay", "helpClose", "moreBtn", "moreMenu",
+    "dashboard", "dashTitle", "dashDonut", "dashPct", "dashStats", "dashFails",
+    "clearRoundBtn", "confirmOverlay", "confirmDesc", "confirmCancel", "confirmOk",
+    "autoAdvanceToggle",
   ];
 
   function $(id) { return document.getElementById(id); }
 
   function init() {
     IDS.forEach(function (id) { el[id] = $(id); });
+    loadAutoAdvancePref();
     bindEvents();
     loadInitial();
+  }
+
+  // 自动跳转偏好：localStorage 跨会话记忆（"0"=关闭，缺省/异常默认开启）
+  var AUTO_ADVANCE_KEY = "tcreader.autoAdvance";
+  function loadAutoAdvancePref() {
+    try {
+      state.autoAdvance = localStorage.getItem(AUTO_ADVANCE_KEY) !== "0";
+    } catch (e) { /* 隐私模式等场景静默降级 */ }
+    if (el.autoAdvanceToggle) el.autoAdvanceToggle.checked = state.autoAdvance;
   }
 
   function fetchJSON(url, opts) {
@@ -130,6 +145,19 @@
   }
 
   /* ---------- 初始配置页 ---------- */
+  // 测试阶段/测试人员跨会话记忆（localStorage，后端会话缺失时回填）
+  var SESSION_PREF_KEY = "tcreader.sessionPrefs";
+  function saveSessionPrefs(stage, tester) {
+    try {
+      localStorage.setItem(SESSION_PREF_KEY, JSON.stringify({ stage: stage || "", tester: tester || "" }));
+    } catch (e) { /* 隐私模式等场景静默降级 */ }
+  }
+  function loadSessionPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(SESSION_PREF_KEY)) || {};
+    } catch (e) { return {}; }
+  }
+
   function showSetup(stage, tester) {
     fetchJSON("/api/testing-files").then(function (res) {
       if (res.ok) {
@@ -139,6 +167,10 @@
       }
       if (typeof stage !== "undefined" && stage !== null && !el.stageInput.value) el.stageInput.value = stage;
       if (typeof tester !== "undefined" && tester !== null && !el.testerInput.value) el.testerInput.value = tester;
+      // 后端会话为空时回填本机上次填写内容
+      var prefs = loadSessionPrefs();
+      if (!el.stageInput.value && prefs.stage) el.stageInput.value = prefs.stage;
+      if (!el.testerInput.value && prefs.tester) el.testerInput.value = prefs.tester;
       // 默认选中当前文件或最新的一个
       if (state.files.length) {
         var cur = res.ok ? res.d.current : null;
@@ -244,6 +276,7 @@
       stage: el.stageInput.value.trim(),
       tester: el.testerInput.value.trim(),
     };
+    saveSessionPrefs(payload.stage, payload.tester); // 跨会话记忆（localStorage）
     fetchJSON("/api/select", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -280,6 +313,9 @@
     el.tableView.classList.toggle("hidden", !isTable);
     el.detailView.classList.toggle("hidden", !isDetail);
     el.previewView.classList.toggle("hidden", !isPreview);
+
+    // 宽屏布局：初始页保持窄幅居中，其余视图充分利用大屏宽度
+    document.body.classList.toggle("wide-view", !isSetup);
 
     // 顶栏/进度/导航：初始页隐藏
     el.execControls.classList.toggle("hidden", isSetup);
@@ -365,6 +401,7 @@
     el.foundTime.value = c.foundTime || "";
     state.foundTimeOriginal = el.foundTime.value; // 记录基准值用于修改确认
     el.bugId.value = c.bugId || "";
+    el.bugId.classList.remove("attn"); // 切换用例时撤去失败登记高亮
     // 测试人员：为空时用会话测试人员预填（可修改）
     el.tester.value = c.tester || state.sessionTester || "";
     el.note.value = c.note || "";
@@ -1150,7 +1187,13 @@
     table.appendChild(thead);
 
     var tbody = document.createElement("tbody");
+    // 编号列去重：该 Sheet 无独立编号（编号全部与标题相同）时以行号代替，避免两列重复
+    var hasRealId = false;
     items.forEach(function (it) {
+      var idText = it.c.caseId || it.c.name || "";
+      if (idText && idText !== (it.c.title || it.c.scenario || "")) hasRealId = true;
+    });
+    items.forEach(function (it, seq) {
       var c = it.c;
       var tr = document.createElement("tr");
       if (it.index === state.index) tr.className = "current";
@@ -1161,8 +1204,9 @@
       var idBtn = document.createElement("button");
       idBtn.type = "button";
       idBtn.className = "ct-link";
-      idBtn.textContent = c.caseId || c.name || "(无编号)";
-      idBtn.title = "进入卡片视图执行该用例";
+      var idText = hasRealId ? (c.caseId || c.name || "(无编号)") : "#" + (seq + 1);
+      idBtn.textContent = idText;
+      idBtn.title = idText + " · 点击进入卡片视图执行";
       idBtn.addEventListener("click", function () { openCase(it.index); });
       tdId.appendChild(idBtn);
       tr.appendChild(tdId);
@@ -1274,6 +1318,98 @@
   }
 
   /* ---------- 测试详情页 ---------- */
+  /* ---------- 轮次执行仪表盘（详情页顶部，纯前端聚合，口径=当前筛选工作集） ---------- */
+  function renderDashboard() {
+    var vis = visibleIndices();
+    var total = vis.length;
+    el.dashboard.classList.toggle("hidden", !total);
+    if (!total) return;
+
+    var counts = { PASS: 0, FAIL: 0, BLOCK: 0, NA: 0 };
+    var done = 0;
+    var failMods = {};
+    vis.forEach(function (i) {
+      var c = state.cases[i];
+      var raw = caseResult(c);
+      if (raw) done++; // 与进度条同口径：有任意结果值即完成
+      var norm = normalizeResult(raw);
+      if (norm) counts[norm]++;
+      if (norm === "FAIL") {
+        var m = c.module || c.sheetTitle || c.sheet || "(未分组)";
+        failMods[m] = (failMods[m] || 0) + 1;
+      }
+    });
+    var untested = total - done;
+
+    el.dashTitle.textContent = "执行概览 · 结果列: " + (state.selectedRound || "默认") +
+      (filterActive() ? "（筛选中）" : "");
+
+    // 环形图：四态 + 未测灰，conic-gradient 纯 CSS 绘制
+    var stops = [];
+    var acc = 0;
+    [[counts.PASS, "var(--pass)"], [counts.FAIL, "var(--fail)"],
+     [counts.BLOCK, "var(--block)"], [counts.NA, "var(--na)"]].forEach(function (seg) {
+      if (!seg[0]) return;
+      var from = (acc / total) * 100;
+      acc += seg[0];
+      stops.push(seg[1] + " " + from + "% " + (acc / total) * 100 + "%");
+    });
+    stops.push("#e7ebf3 " + (acc / total) * 100 + "% 100%");
+    el.dashDonut.style.background = "conic-gradient(" + stops.join(", ") + ")";
+    el.dashPct.textContent = Math.round((done / total) * 100) + "%";
+
+    // 四态 + 未测数量胶囊（颜色与全局结果色板一致）
+    el.dashStats.innerHTML = "";
+    [["通过", counts.PASS, "res-pass"], ["失败", counts.FAIL, "res-fail"],
+     ["阻塞", counts.BLOCK, "res-block"], ["跳过", counts.NA, "res-na"],
+     ["未测", untested, "res-none"]].forEach(function (s) {
+      var chip = document.createElement("span");
+      chip.className = "dash-stat " + s[2];
+      chip.textContent = s[0] + " " + s[1];
+      el.dashStats.appendChild(chip);
+    });
+
+    // 失败集中模块 TOP5 条形图
+    el.dashFails.innerHTML = "";
+    var mods = Object.keys(failMods)
+      .map(function (m) { return { name: m, n: failMods[m] }; })
+      .sort(function (a, b) { return b.n - a.n; })
+      .slice(0, 5);
+    var ft = document.createElement("div");
+    ft.className = "dash-fails-title";
+    ft.textContent = mods.length ? "失败集中模块 TOP" + mods.length : "失败分布";
+    el.dashFails.appendChild(ft);
+    if (!mods.length) {
+      var okMsg = document.createElement("div");
+      okMsg.className = "dash-fails-empty";
+      okMsg.textContent = "本轮暂无失败用例";
+      el.dashFails.appendChild(okMsg);
+    } else {
+      var max = mods[0].n;
+      mods.forEach(function (m) {
+        var row = document.createElement("div");
+        row.className = "dash-fail-row";
+        var name = document.createElement("span");
+        name.className = "dash-fail-name";
+        name.textContent = m.name;
+        name.title = m.name;
+        var bar = document.createElement("span");
+        bar.className = "dash-fail-bar";
+        var fill = document.createElement("span");
+        fill.className = "dash-fail-fill";
+        fill.style.width = Math.round((m.n / max) * 100) + "%";
+        bar.appendChild(fill);
+        var num = document.createElement("span");
+        num.className = "dash-fail-num";
+        num.textContent = m.n;
+        row.appendChild(name);
+        row.appendChild(bar);
+        row.appendChild(num);
+        el.dashFails.appendChild(row);
+      });
+    }
+  }
+
   function renderDetail() {
     var container = el.sheetGroups;
     container.innerHTML = "";
@@ -1289,16 +1425,25 @@
     var execGroups = 0;
     computeLocalProgress();
     var p = state.progress;
+    renderDashboard();
 
-    // 按原始 Sheet 顺序渲染：可执行组 + 只读预览组
+    // 可执行组置顶（按原 Sheet 顺序）；只读预览组收在"参考资料"分区尾部
     state.sheets.forEach(function (s) {
       if (caseMap[s.name]) {
         execGroups++;
         container.appendChild(buildCaseGroup(s, caseMap[s.name]));
-      } else if (state.previewMap[s.name]) {
-        container.appendChild(buildPreviewGroup(s));
       }
     });
+    var previewSheets = state.sheets.filter(function (s) {
+      return !caseMap[s.name] && state.previewMap[s.name];
+    });
+    if (previewSheets.length) {
+      var refTitle = document.createElement("div");
+      refTitle.className = "sg-ref-title";
+      refTitle.textContent = "参考资料（只读预览）";
+      container.appendChild(refTitle);
+      previewSheets.forEach(function (s) { container.appendChild(buildPreviewGroup(s)); });
+    }
 
     el.detailSummary.textContent = "共 " + state.sheets.length + " 个 Sheet · 可执行 " +
       execGroups + " 组 · 已完成 " + p.done + " / " + p.total +
@@ -1679,6 +1824,59 @@
       .catch(function () { setSaveStatus("网络错误", "error"); });
   }
 
+  /* ---------- 批量清除本轮结果（危险操作，二次确认） ---------- */
+  function openClearConfirm() {
+    flushSave();
+    var n = 0;
+    state.cases.forEach(function (c) { if (caseResult(c)) n++; });
+    if (!n) { setSaveStatus("本轮暂无已录结果", "ok"); return; }
+    var roundName = state.selectedRound || "测试结果";
+    el.confirmDesc.textContent = "将清空「" + roundName + "」列的全部 " + n +
+      " 条已录结果（共 " + state.cases.length + " 条用例）。此操作不可撤销。";
+    el.confirmOk.disabled = false;
+    el.confirmOverlay.classList.remove("hidden");
+  }
+
+  function closeClearConfirm() {
+    el.confirmOverlay.classList.add("hidden");
+  }
+
+  function doClearRound() {
+    el.confirmOk.disabled = true;
+    setSaveStatus("正在清除…", "saving");
+    fetchJSON("/api/results/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resultColumn: state.selectedRound || "" }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          el.confirmOk.disabled = false;
+          setSaveStatus(res.d && res.d.error ? res.d.error : "清除失败", "error");
+          return;
+        }
+        // 本地同步而非整页重载：保留筛选/索引/轮次等页面状态
+        state.cases.forEach(function (c) {
+          setCaseResult(c, "");
+          // 回退口径下清的是首个结果列，与主结果列镜像保持一致
+          var cols = state.resultColumns[c.sheet] || [];
+          var eff = effectiveColFor(c.sheet).name;
+          if (!eff || eff === cols[0]) c.result = "";
+        });
+        invalidateFilter();
+        closeClearConfirm();
+        if (state.view === "table") renderTable();
+        else if (state.view === "detail") renderDetail();
+        else if (state.view === "exec") render();
+        updateProgress();
+        setSaveStatus("已清除 " + res.d.cleared + " 条结果（已自动备份）", "ok");
+      })
+      .catch(function () {
+        el.confirmOk.disabled = false;
+        setSaveStatus("网络错误", "error");
+      });
+  }
+
   /* ---------- 事件绑定 ---------- */
   function bindEvents() {
     // 初始页
@@ -1687,6 +1885,37 @@
     el.startBtn.addEventListener("click", startTest);
     el.changeFile.addEventListener("click", function () { flushSave(); showSetup(); });
 
+    // 顶栏"···"更多菜单（低频全局动作）
+    el.moreBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      el.moreMenu.classList.toggle("hidden");
+    });
+    el.moreMenu.addEventListener("click", function () { el.moreMenu.classList.add("hidden"); });
+    document.addEventListener("click", function () { el.moreMenu.classList.add("hidden"); });
+
+    // 清除本轮结果：菜单入口 → 二次确认弹窗（Esc/取消/遮罩关闭）
+    el.clearRoundBtn.addEventListener("click", openClearConfirm);
+    el.confirmCancel.addEventListener("click", closeClearConfirm);
+    el.confirmOk.addEventListener("click", doClearRound);
+    el.confirmOverlay.addEventListener("click", function (e) {
+      if (e.target === el.confirmOverlay) closeClearConfirm();
+    });
+
+    // 自动跳转开关：更新状态并跨会话记忆
+    el.autoAdvanceToggle.addEventListener("change", function () {
+      state.autoAdvance = el.autoAdvanceToggle.checked;
+      try {
+        localStorage.setItem(AUTO_ADVANCE_KEY, state.autoAdvance ? "1" : "0");
+      } catch (e) { /* 静默降级 */ }
+    });
+
+    // 快捷键速查浮层：顶栏 ? 按钮 / 键盘 ? 开合，Esc 或点遮罩关闭
+    el.helpBtn.addEventListener("click", toggleHelp);
+    el.helpClose.addEventListener("click", toggleHelp);
+    el.helpOverlay.addEventListener("click", function (e) {
+      if (e.target === el.helpOverlay) toggleHelp();
+    });
+
     el.resultButtons.addEventListener("click", function (e) {
       var btn = e.target.closest(".rbtn");
       if (!btn) return;
@@ -1694,10 +1923,20 @@
       el.resultButtons.querySelectorAll(".rbtn").forEach(function (b) { b.classList.remove("active"); });
       if (!wasActive) btn.classList.add("active"); // 再次点击可取消
       var result = wasActive ? "" : btn.getAttribute("data-result");
-      // 仅"失败(FAIL)"在无时间时自动记录时间戳；PASS/BLOCK/NA 不再自动记录
-      if (result === "FAIL" && !el.foundTime.value) {
-        el.foundTime.value = nowStamp();
-        state.foundTimeOriginal = el.foundTime.value;
+      // 失败快捷登记流：FAIL/BLOCK 自动补发现时间、聚焦现象输入、高亮缺陷号；PASS/NA 不打扰
+      if (result === "FAIL" || result === "BLOCK") {
+        if (!el.foundTime.value) {
+          el.foundTime.value = nowStamp();
+          state.foundTimeOriginal = el.foundTime.value;
+        }
+        el.actual.focus();
+        if (!el.bugId.value) el.bugId.classList.add("attn");
+      } else {
+        el.bugId.classList.remove("attn");
+      }
+      // 自动跳转：通过/跳过即刻推进；失败/阻塞停留配合快捷登记流；取消选择不跳
+      if (state.autoAdvance && (result === "PASS" || result === "NA")) {
+        setTimeout(function () { go(1); }, 300); // 留出按钮反馈时间；go() 内 flushSave 保证先存后跳
       }
       scheduleSave();
     });
@@ -1705,6 +1944,8 @@
     [el.actual, el.bugId, el.tester, el.note].forEach(function (node) {
       node.addEventListener("input", scheduleSave);
     });
+    // 缺陷号开始录入后撤去高亮提示
+    el.bugId.addEventListener("input", function () { el.bugId.classList.remove("attn"); });
 
     // 发现时间：支持手动输入/修改；修改已有时间需二次确认
     el.foundTime.addEventListener("focus", function () {
@@ -1845,7 +2086,28 @@
     render();
   }
 
+  function toggleHelp() {
+    el.helpOverlay.classList.toggle("hidden");
+  }
+
   function onKey(e) {
+    var tag0 = (e.target.tagName || "").toLowerCase();
+    var typing0 = tag0 === "input" || tag0 === "textarea" || tag0 === "select";
+    // 清除确认弹窗打开时：Esc 关闭并拦截其余按键（危险操作，最高优先）
+    if (!el.confirmOverlay.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeClearConfirm(); e.preventDefault(); }
+      return;
+    }
+    // 快捷键速查浮层：打开时 Esc/? 关闭并拦截其余按键；? 在任意非初始页可打开
+    if (!el.helpOverlay.classList.contains("hidden")) {
+      if (e.key === "Escape" || e.key === "?") { toggleHelp(); e.preventDefault(); }
+      return;
+    }
+    if (e.key === "?" && !typing0 && state.view !== "setup") {
+      toggleHelp();
+      e.preventDefault();
+      return;
+    }
     // 阅读侧栏打开时：Esc 关闭（单焦点，优先响应）
     if (!el.readerPanel.classList.contains("hidden")) {
       if (e.key === "Escape") { closeReader(); e.preventDefault(); }
