@@ -33,6 +33,14 @@ SUPPORTED_LABEL = "xlsx / xlsm / xls / csv / md / xmind"
 
 app = Flask(__name__, static_folder=None)
 
+# 上传大小上限：50MB 已远超正常用例文件（当前最大约 1.4MB），防止误传大文件打爆内存
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+@app.errorhandler(413)
+def _too_large(_e):
+    return jsonify({"error": "文件超过 50MB 上限，请检查是否选错了文件"}), 413
+
 # 当前工作文件路径、会话信息（测试阶段/测试人员）、已备份文件集合
 STATE = {
     "current_path": None,

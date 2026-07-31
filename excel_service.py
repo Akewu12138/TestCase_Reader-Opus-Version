@@ -18,6 +18,7 @@ import base64
 import difflib
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime
@@ -682,14 +683,35 @@ def _atomic_save(wb, path):
         raise
 
 
+_BACKUP_KEEP = 10  # 同一源文件保留的最近备份数，超出自动清理
+
+
 def make_backup(path, backup_dir):
-    """在 backup_dir 生成带时间戳的备份，返回备份路径。"""
+    """在 backup_dir 生成带时间戳的备份，返回备份路径。
+
+    同一源文件仅保留最近 _BACKUP_KEEP 份，避免 backups 目录无限增长；
+    清理失败不影响备份本身（静默跳过被占用的旧文件）。
+    """
     os.makedirs(backup_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = os.path.splitext(os.path.basename(path))[0]
     backup_path = os.path.join(backup_dir, "backup_%s_%s.xlsx" % (base, ts))
     shutil.copy2(path, backup_path)
+    _prune_backups(backup_dir, base)
     return backup_path
+
+
+def _prune_backups(backup_dir, base):
+    """删除同源多余备份，按文件名时间戳倒序保留最近 _BACKUP_KEEP 份。"""
+    # 严格匹配"backup_源名_时间戳.xlsx"，避免源名互为前缀时误删他人备份
+    pat = re.compile(
+        r"^backup_%s_\d{8}_\d{6}\.xlsx$" % re.escape(base))
+    same = sorted(f for f in os.listdir(backup_dir) if pat.match(f))
+    for name in same[:-_BACKUP_KEEP]:
+        try:
+            os.remove(os.path.join(backup_dir, name))
+        except OSError:
+            pass
 
 
 def update_case(path, sheet, row_index, fields, expected_name=None,

@@ -51,9 +51,19 @@ python app.py
 │   ├── index.html        # 前端单页
 │   ├── app.js            # 前端交互逻辑
 │   └── style.css         # 样式
+├── tests/
+│   └── test_excel_service.py  # 核心逻辑单元测试
 └── uploads/
     ├── testing/          # 用例库（运行时生成）
-    └── backups/          # 自动备份（运行时生成）
+    └── backups/          # 自动备份（同源保留最近 10 份）
+```
+
+## 运行测试
+
+改动 `excel_service.py` / `app.py` 后（尤其推送前）请先跑测试：
+
+```
+python -m unittest discover tests
 ```
 
 ## Sheet 分类规则
