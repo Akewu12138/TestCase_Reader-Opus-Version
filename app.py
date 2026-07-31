@@ -129,6 +129,22 @@ def _cases_response(path):
     return payload
 
 
+def _session_conflict(data, path):
+    """会话隔离校验：请求声明的 fileName 与当前工作文件不一致时返回 409。
+
+    多标签页各自选择不同文件时，写请求可能落到别人切走后的文件上；
+    仿 expectedName 的可选校验模式：前端始终携带，缺失时放行以兼容旧页面。
+    """
+    claimed = _safe_name(data.get("fileName", ""))
+    if claimed and claimed != os.path.basename(path):
+        return jsonify({
+            "error": "当前工作文件已切换为 %s，页面显示的是 %s，"
+                     "请刷新页面后重试" % (os.path.basename(path), claimed),
+            "conflict": True,
+        }), 409
+    return None
+
+
 @app.route("/")
 def index():
     return send_from_directory(STATIC_DIR, "index.html")
@@ -236,6 +252,9 @@ def patch_case():
     path = STATE["current_path"]
     if not path or not os.path.exists(path):
         return jsonify({"error": "当前文件不存在"}), 404
+    conflict = _session_conflict(data, path)
+    if conflict:
+        return conflict
     # 矩阵页多结果列：透传目标结果列号（functional/scenario 路径忽略）
     result_col = data.get("resultCol")
     if not isinstance(result_col, int):
@@ -262,6 +281,9 @@ def create_result_column():
     path = STATE["current_path"]
     if not path or not os.path.exists(path):
         return jsonify({"error": "当前文件不存在"}), 404
+    conflict = _session_conflict(data, path)
+    if conflict:
+        return conflict
     try:
         excel_service.add_result_column(path, name)
     except ValueError as exc:
@@ -281,6 +303,9 @@ def clear_results():
     path = STATE["current_path"]
     if not path or not os.path.exists(path):
         return jsonify({"error": "当前文件不存在"}), 404
+    conflict = _session_conflict(data, path)
+    if conflict:
+        return conflict
     # 破坏性操作前单独留档一份即时备份（不依赖会话级首次备份）
     try:
         excel_service.make_backup(path, BACKUP_DIR)

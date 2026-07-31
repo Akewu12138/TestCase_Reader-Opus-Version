@@ -1295,6 +1295,8 @@
 
   // 通用 PATCH 写回：成功后刷新进度，失败回调 onFail 回滚
   function patchCase(payload, onOk, onFail) {
+    // 会话隔离：声明页面所属文件，服务端切换文件后拒写并提示刷新
+    payload.fileName = state.fileName || undefined;
     fetchJSON("/api/cases", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1794,7 +1796,7 @@
     fetchJSON("/api/result-columns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name }),
+      body: JSON.stringify({ name: name, fileName: state.fileName || undefined }),
     })
       .then(function (res) {
         if (!res.ok) {
@@ -1847,7 +1849,8 @@
     fetchJSON("/api/results/clear", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resultColumn: state.selectedRound || "" }),
+      body: JSON.stringify({ resultColumn: state.selectedRound || "",
+                             fileName: state.fileName || undefined }),
     })
       .then(function (res) {
         if (!res.ok) {

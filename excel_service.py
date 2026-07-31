@@ -91,6 +91,10 @@ _WRITABLE_FIELDS = ("result", "bugId", "tester", "note", "actual", "foundTime")
 # 写文件锁，避免并发写回损坏文件
 _write_lock = Lock()
 
+# 解析结果缓存：abspath -> ((mtime_ns, size), payload)。持 _write_lock 读写。
+_parse_cache = {}
+_PARSE_CACHE_MAX = 8
+
 
 def _cell_str(value):
     """将单元格值规范为去除首尾空白的字符串。"""
@@ -250,6 +254,21 @@ def _result_columns(ws, header_row, cols):
                 _field_score(_norm_header(text), "result") >= _MATCH_THRESHOLD:
             items.append((col_idx, text))
     return items
+
+
+def _effective_result_col(result_cols, target_name):
+    """轮次结果列回退解析的唯一口径（前端 effectiveColFor 与此保持一致）：
+
+    目标表头名在该 Sheet 结果列中则用之，否则回退首个结果列
+    （即页面上实际显示的列），保证"写的/清的就是看到的"。
+    result_cols 为空返回 None。
+    """
+    if not result_cols:
+        return None
+    for col, header in result_cols:
+        if header == target_name:
+            return col, header
+    return result_cols[0]
 
 
 def _last_header_col(ws, header_row):
@@ -540,9 +559,27 @@ def parse_workbook(path):
     若补齐了新增列表头会自动保存。
     整个解析（含补列保存）持写锁执行，避免与 update_case 的写回交错
     导致丢失更新。
+
+    结果按 (mtime_ns, size) 缓存：文件未变时直接命中，避免大文件反复
+    解析；任何写回都经 _atomic_save 替换文件而使指纹变化，自动失效。
     """
+    key = os.path.abspath(path)
     with _write_lock:
-        return _parse_workbook_unlocked(path)
+        st = os.stat(path)
+        fingerprint = (st.st_mtime_ns, st.st_size)
+        hit = _parse_cache.get(key)
+        if hit and hit[0] == fingerprint:
+            return dict(hit[1]), False
+        payload, header_changed = _parse_workbook_unlocked(path)
+        if header_changed:
+            # 补列已落盘，指纹以保存后的文件为准
+            st = os.stat(path)
+            fingerprint = (st.st_mtime_ns, st.st_size)
+        if len(_parse_cache) >= _PARSE_CACHE_MAX and key not in _parse_cache:
+            # 极简淘汰：满了清最早插入的一条（文件数通常远小于上限）
+            _parse_cache.pop(next(iter(_parse_cache)))
+        _parse_cache[key] = (fingerprint, payload)
+        return dict(payload), header_changed
 
 
 def _parse_workbook_unlocked(path):
@@ -723,7 +760,7 @@ def update_case(path, sheet, row_index, fields, expected_name=None,
     matrix 页仅允许写回 result 单字段，需通过 result_col 指明目标结果列
     （多结果列对应不同测试条件），不补列、不改动其余内容。
     result_column: 可选，功能/场景页 result 字段的目标结果列表头名
-    （测试轮次，如"rc10测试结果"）；未匹配到时回退主结果列，
+    （测试轮次，如"rc10测试结果"）；回退口径见 _effective_result_col，
     其余字段不受影响。与矩阵页的 result_col（列号）互不相干。
     expected_name: 可选，前端所见的用例名（caseId/标题/场景；矩阵页为
     行首个非空单元格），用于校验目标行未因外部编辑而错位。
@@ -786,8 +823,10 @@ def update_case(path, sheet, row_index, fields, expected_name=None,
                     continue
                 col = cols.get(key)
                 if key == "result" and result_column:
-                    col = next((c for c, h in result_cols
-                                if h == result_column), col)
+                    # 与前端 effectiveColFor 同口径：未匹配回退首个结果列
+                    eff = _effective_result_col(result_cols, result_column)
+                    if eff:
+                        col = eff[0]
                 if not col:
                     continue
                 _anchor_cell(ws, row_index, col).value = value if value != "" else None
@@ -842,8 +881,8 @@ def add_result_column(path, name):
 def clear_result_column(path, column_name):
     """批量清空所有可执行 Sheet 中当前轮次结果列的用例结果。
 
-    column_name: 目标结果列表头名（测试轮次）；每个 Sheet 按与前端
-    effectiveColFor 一致的口径解析——表头匹配则用之，否则回退该
+    column_name: 目标结果列表头名（测试轮次）；每个 Sheet 按
+    _effective_result_col 唯一口径解析——表头匹配则用之，否则回退该
     Sheet 首个结果列，保证"清的就是页面上看到的"。空串即回退语义。
     仅清空真实用例行（跳过分组标题/空行），其余字段与其他轮次列不动。
     返回 {"cleared": N, "progress": {...}}。
@@ -860,10 +899,10 @@ def clear_result_column(path, column_name):
                 header_row = meta["headerRow"]
                 cols = meta["columns"]
                 result_cols = _result_columns(ws, header_row, cols)
-                if not result_cols:
+                eff = _effective_result_col(result_cols, target_name)
+                if not eff:
                     continue
-                col = next((c for c, h in result_cols if h == target_name),
-                           result_cols[0][0])
+                col = eff[0]
                 for row_idx in range(header_row + 1, ws.max_row + 1):
                     if not _is_real_case(ws, row_idx, cols, meta["kind"]):
                         continue

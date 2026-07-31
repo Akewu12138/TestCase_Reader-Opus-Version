@@ -9,6 +9,9 @@
 - update_case 行指纹校验 / 轮次列定向写回
 - add_result_column / clear_result_column（含回退口径）
 - make_backup 保留策略
+- _effective_result_col 回退口径单源（#7）
+- parse_workbook (mtime,size) 缓存命中与失效（#6①）
+- 写接口 fileName 会话隔离 409（#4，走 Flask test_client）
 
 运行：python -m unittest discover tests
 夹具全部用 openpyxl 现场生成微型 xlsx，不依赖真实用例文件。
@@ -243,6 +246,124 @@ class TestBackupPrune(unittest.TestCase):
                 if f.startswith("backup_报告_2") and "_v2_" not in f]
         self.assertEqual(len(same), es._BACKUP_KEEP)
         self.assertTrue(os.path.exists(sibling))
+
+
+class TestEffectiveResultCol(unittest.TestCase):
+    """轮次结果列回退解析唯一口径（#7 单源化）。"""
+
+    COLS = [(5, "测试结果"), (7, "rc2测试结果")]
+
+    def test_match_returns_named_column(self):
+        self.assertEqual(es._effective_result_col(self.COLS, "rc2测试结果"),
+                         (7, "rc2测试结果"))
+
+    def test_miss_falls_back_to_first(self):
+        # 与前端 effectiveColFor 一致：未匹配回退首列而非主列
+        self.assertEqual(es._effective_result_col(self.COLS, "rc9测试结果"),
+                         (5, "测试结果"))
+        self.assertEqual(es._effective_result_col(self.COLS, ""),
+                         (5, "测试结果"))
+
+    def test_empty_returns_none(self):
+        self.assertIsNone(es._effective_result_col([], "测试结果"))
+
+
+class TestParseCache(unittest.TestCase):
+    """parse_workbook (mtime, size) 缓存：命中不重解析、写回后自动失效。"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.path = os.path.join(self.tmp, "c.xlsx")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        _make_functional_sheet(wb, "功能A", rows=[
+            ("TC1", "用例一", "步骤", "预期", ""),
+        ])
+        wb.save(self.path)
+        wb.close()
+
+    def tearDown(self):
+        es._parse_cache.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_second_parse_hits_cache(self):
+        p1, _ = es.parse_workbook(self.path)
+        key = os.path.abspath(self.path)
+        self.assertIn(key, es._parse_cache)
+        cached_payload = es._parse_cache[key][1]
+        p2, changed = es.parse_workbook(self.path)
+        self.assertFalse(changed)
+        # 命中时返回的是缓存对象的顶层拷贝（同一嵌套引用、不同外层 dict）
+        self.assertIsNot(p2, cached_payload)
+        self.assertIs(p2["cases"], cached_payload["cases"])
+
+    def test_write_invalidates_cache(self):
+        p1, _ = es.parse_workbook(self.path)
+        self.assertEqual(p1["progress"]["done"], 0)
+        es.update_case(self.path, "功能A", 3, {"result": "PASS"},
+                       expected_name="TC1")
+        p2, _ = es.parse_workbook(self.path)
+        self.assertEqual(p2["progress"]["done"], 1)
+
+    def test_toplevel_copy_protects_cache(self):
+        # 调用方在负载上补 fileName 等顶层键，不得污染缓存
+        p1, _ = es.parse_workbook(self.path)
+        p1["fileName"] = "x.xlsx"
+        p2, _ = es.parse_workbook(self.path)
+        self.assertNotIn("fileName", p2)
+
+
+class TestSessionIsolation(unittest.TestCase):
+    """#4 会话隔离：写接口 fileName 与当前工作文件不符时返回 409。"""
+
+    def setUp(self):
+        import app as app_module
+        self.app_module = app_module
+        self.tmp = tempfile.mkdtemp()
+        self.path = os.path.join(self.tmp, "当前文件.xlsx")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        _make_functional_sheet(wb, "功能A", rows=[
+            ("TC1", "用例一", "步骤", "预期", "PASS"),
+        ])
+        wb.save(self.path)
+        wb.close()
+        self._saved_state = dict(app_module.STATE)
+        self._saved_backup_dir = app_module.BACKUP_DIR
+        app_module.STATE["current_path"] = self.path
+        app_module.BACKUP_DIR = os.path.join(self.tmp, "backups")
+        self.client = app_module.app.test_client()
+
+    def tearDown(self):
+        self.app_module.STATE.update(self._saved_state)
+        self.app_module.BACKUP_DIR = self._saved_backup_dir
+        es._parse_cache.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_patch_with_stale_filename_conflicts(self):
+        r = self.client.patch("/api/cases", json={
+            "sheet": "功能A", "rowIndex": 3, "result": "FAIL",
+            "fileName": "别的文件.xlsx"})
+        self.assertEqual(r.status_code, 409)
+        self.assertTrue(r.get_json().get("conflict"))
+
+    def test_clear_with_stale_filename_conflicts(self):
+        r = self.client.post("/api/results/clear", json={
+            "resultColumn": "", "fileName": "别的文件.xlsx"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_matching_filename_passes(self):
+        r = self.client.post("/api/results/clear", json={
+            "resultColumn": "", "fileName": "当前文件.xlsx"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["cleared"], 1)
+
+    def test_missing_filename_allowed_for_compat(self):
+        # 旧页面不带 fileName：放行（与 expectedName 可选校验同模式）
+        r = self.client.patch("/api/cases", json={
+            "sheet": "功能A", "rowIndex": 3, "result": "NA",
+            "expectedName": "TC1"})
+        self.assertEqual(r.status_code, 200)
 
 
 if __name__ == "__main__":
