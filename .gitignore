@@ -7,6 +7,12 @@ __pycache__/
 uploads/
 server.log
 
+# 验证过程产物（根目录截图 / 临时脚本日志，不入库）
+/*.png
+_*.log
+_*.txt
+_*.ps1
+
 # Virtualenv (created by launchers)
 .venv/
 
