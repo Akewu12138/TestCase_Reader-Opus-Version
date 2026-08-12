@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>03 · 极简黑白 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Inter","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;background:#FAFAFA;color:#111}
+
+.demo{border-bottom:1px solid #111;background:#fff;font-size:12px;padding:7px 18px;display:flex;gap:14px;align-items:center}
+.demo b{font-weight:700}
+.demo .tag{background:#111;color:#fff;padding:1px 8px;font-size:11px}
+.demo span{color:#666}
+
+.app{max-width:1440px;margin:0 auto;min-height:calc(100vh - 30px);display:flex;flex-direction:column}
+
+/* 顶栏：极简工具条 */
+.topbar{background:#fff;border-bottom:1px solid #111;padding:0 20px;height:48px;display:flex;align-items:center;gap:14px}
+.brand{font-weight:700;font-size:14px;letter-spacing:.5px;display:flex;align-items:center;gap:9px}
+.brand i{width:8px;height:8px;background:#111}
+.brand small{font-weight:400;font-size:11px;color:#888;font-family:"SF Mono",Consolas,monospace}
+.tb-sep{width:1px;height:20px;background:#ddd}
+.tb-btn{font-size:12px;background:none;border:none;border-bottom:2px solid transparent;color:#333;padding:7px 12px;cursor:pointer}
+.tb-btn:hover{color:#000}
+.tb-btn.on{color:#000;border-bottom-color:#111;font-weight:600}
+.tb-btn.primary{background:#111;color:#fff;border:none;padding:7px 14px}
+.tb-btn.primary:hover{background:#000}
+.tb-sel{border:1px solid #ccc;border-radius:0;font-size:12px;padding:6px 8px;background:#fff;color:#111}
+.tb-right{margin-left:auto;display:flex;gap:12px;align-items:center}
+.tb-save{font-size:11px;color:#888}
+
+/* 进度：细线 */
+.progress{background:#fff;border-bottom:1px solid #e8e8e8;padding:10px 20px;display:flex;align-items:center;gap:14px}
+.pbar{flex:1;height:4px;background:#eee;overflow:hidden;display:flex}
+.pbar span{height:100%}
+.pbar .p{background:#444}.pbar .f{background:#111}.pbar .b{background:#999}.pbar .n{background:#ddd}
+.pinfo{font-size:11.5px;color:#555;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pinfo b{color:#111}
+
+/* 布局 */
+.layout{flex:1;display:flex;gap:20px;padding:22px 20px;min-height:0;max-width:1200px;margin:0 auto;width:100%}
+
+/* 阅读区：居中留白 */
+.case{flex:1;min-width:0;background:#fff;border:1px solid #e8e8e8;padding:30px 34px}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.bd{font-size:10.5px;padding:3px 9px;border:1px solid #e8e8e8;background:#f5f5f5;color:#333;font-family:"SF Mono",Consolas,monospace}
+.bd.id{background:#111;color:#fff;border-color:#111}
+.bd.p0{background:#111;color:#fff;border-color:#111}
+.case h1{font-size:24px;font-weight:700;letter-spacing:-.2px;margin-bottom:20px;line-height:1.4}
+.msec{margin-bottom:20px}
+.msec h2{font-size:11px;color:#888;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-family:"SF Mono",Consolas,monospace}
+.msec p,.msec li{font-size:14px;line-height:2;color:#222}
+.msec ol,.msec ul{padding-left:20px}
+.prec{border-left:3px solid #111;padding:10px 16px;background:#f7f7f7}
+
+/* 执行区：窄栏 */
+.exec{width:300px;flex-shrink:0;background:#fff;border:1px solid #e8e8e8;padding:22px;align-self:flex-start}
+.exec h2{font-size:11px;color:#888;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;font-family:"SF Mono",Consolas,monospace}
+.rbtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.rbtns button{font-size:12px;font-weight:600;padding:9px 0;border:1px solid #111;background:#fff;color:#111;cursor:pointer;border-radius:0}
+.rbtns button:hover{background:#f2f2f2}
+.rbtns button.on{background:#111;color:#fff}
+.rbtns .na{border-color:#ddd;color:#888}
+.rbtns .na.on{background:#555;border-color:#555;color:#fff}
+.rbtns kbd{font-size:9px;opacity:.55;margin-left:4px;font-family:inherit}
+.auto{font-size:12px;color:#555;display:flex;align-items:center;gap:7px;margin-bottom:12px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:10.5px;font-weight:600;color:#666;margin-bottom:5px;font-family:"SF Mono",Consolas,monospace}
+.fld input,.fld textarea{width:100%;font-size:12.5px;padding:8px 10px;border:1px solid #ccc;border-radius:0;background:#fff;color:#111;font-family:inherit;resize:none}
+.fld input:focus,.fld textarea:focus{outline:1px solid #111;border-color:#111}
+.fld2{display:flex;gap:10px}
+.fld2 .fld{flex:1}
+
+/* 底部 */
+.navbar{background:#fff;border-top:1px solid #111;padding:10px 20px;display:flex;justify-content:center;align-items:center;gap:18px}
+.nb-btn{font-size:12px;padding:7px 18px;border:1px solid #111;background:#fff;color:#111;cursor:pointer;border-radius:0}
+.nb-btn:hover{background:#111;color:#fff}
+.nb-btn kbd{font-size:10px;opacity:.55;margin-left:4px;font-family:inherit}
+.nb-cnt{font-size:12px;font-weight:600;color:#555;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>03</b> 极简黑白 · 克制 / 高密度 / 无彩色 <span class="tag">落地成本：低</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><i></i>测试用例执行器<small>IND-1.14.2_工业回归.xlsx</small></div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn on">执行界面</button>
+    <button class="tb-btn">表格</button>
+    <button class="tb-btn">测试详情</button>
+    <div class="tb-sep"></div>
+    <select class="tb-sel"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option></select>
+    <button class="tb-btn">筛选</button>
+    <button class="tb-btn">下一条未测</button>
+    <div class="tb-right">
+      <button class="tb-btn primary">导出子任务</button>
+      <span class="tb-save">已保存</span>
+    </div>
+  </header>
+
+  <div class="progress">
+    <div class="pbar"><span class="p" style="width:40%"></span><span class="f" style="width:4.4%"></span><span class="b" style="width:2.2%"></span><span class="n" style="width:4.4%"></span></div>
+    <div class="pinfo">已完成 <b id="doneNum">23</b> / 45 · 通过 18 · 失败 2 · 阻塞 1 · 跳过 2</div>
+  </div>
+
+  <div class="layout">
+    <section class="case">
+      <div class="badges">
+        <span class="bd id">IND-1.14.2-DCRK-001</span>
+        <span class="bd">功能</span>
+        <span class="bd p0">P0</span>
+        <span class="bd">高风险</span>
+        <span class="bd">倒车入库</span>
+      </div>
+      <h1>倒车入库 — 目标车位识别与入库</h1>
+      <div class="msec">
+        <h2>前置条件</h2>
+        <p class="prec">机器人电量 ≥ 20%；场地车位线清晰；调度系统在线且已下发建图任务</p>
+      </div>
+      <div class="msec">
+        <h2>测试步骤</h2>
+        <ol>
+          <li>在调度界面下发“倒车入库”任务</li>
+          <li>机器人自动导航至目标车位前方约 1.5m 处</li>
+          <li>观察机器人倒车入库全程，记录停位偏差</li>
+        </ol>
+      </div>
+      <div class="msec">
+        <h2>预期结果</h2>
+        <ul>
+          <li>任务下发成功，机器人开始执行，状态置为“执行中”</li>
+          <li>机器人准确停入车位，左右距离误差 &lt; 5cm</li>
+          <li>入库完成，上报任务成功并回到待命状态</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside class="exec">
+      <h2>执行结果</h2>
+      <div class="rbtns">
+        <button class="rb-pass">通过<kbd>1</kbd></button>
+        <button class="rb-fail">失败<kbd>2</kbd></button>
+        <button class="rb-block">阻塞<kbd>3</kbd></button>
+        <button class="rb-na">跳过<kbd>4</kbd></button>
+      </div>
+      <label class="auto"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+      <div class="fld"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea></div>
+      <div class="fld2">
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷" /></div>
+      </div>
+      <div class="fld"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明或问题描述…"></textarea></div>
+    </aside>
+  </div>
+
+  <footer class="navbar">
+    <button class="nb-btn">← 上一条<kbd>←</kbd></button>
+    <span class="nb-cnt">23 / 45</span>
+    <button class="nb-btn">下一条 →<kbd>→</kbd></button>
+  </footer>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rb-pass',2:'.rb-fail',3:'.rb-block',4:'.rb-na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

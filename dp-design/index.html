@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>测试用例执行器 · dp-design 十种风格方案</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;background:#EEF1F6;color:#1F2A3D}
+.page{max-width:1200px;margin:0 auto;padding:36px 24px 60px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:8px}
+.head h1{font-size:26px;font-weight:800;letter-spacing:.3px}
+.head h1 span{color:#2563EB}
+.head p{margin-top:8px;font-size:13.5px;color:#6B7A90;line-height:1.7}
+.note{margin:16px 0 26px;background:#fff;border:1px solid #E1E7F0;border-radius:12px;padding:12px 16px;font-size:12.5px;color:#55627A;line-height:1.8}
+.note b{color:#2563EB}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.card{display:flex;gap:16px;background:#fff;border:1.5px solid #E1E7F0;border-radius:14px;padding:16px;text-decoration:none;color:inherit;transition:transform .16s,box-shadow .16s,border-color .16s}
+.card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(31,58,110,.12);border-color:#2563EB}
+.swatch{width:74px;flex-shrink:0;border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08);display:flex;flex-direction:column}
+.swatch .s-top{height:14px}
+.swatch .s-mid{flex:1;display:flex;gap:2px;padding:3px}
+.swatch .s-main{flex:1.7;border-radius:3px}
+.swatch .s-side{flex:1;border-radius:3px}
+.swatch .s-foot{height:9px}
+.c-body{flex:1;min-width:0}
+.c-row{display:flex;align-items:center;gap:10px}
+.c-no{font-size:11px;font-weight:800;color:#fff;background:#C4CCD8;border-radius:6px;padding:2px 8px}
+.c-name{font-size:16px;font-weight:700}
+.c-cost{font-size:11px;font-weight:700;margin-left:auto;padding:3px 10px;border-radius:20px;white-space:nowrap}
+.c-easy{background:#E9F8EF;color:#1E8E4E}.c-mid{background:#FFF5E0;color:#B8760F}.c-hard{background:#FDEBEC;color:#CE3A43}
+.c-tags{margin-top:6px;font-size:12px;color:#8A97A8}
+.c-desc{margin-top:8px;font-size:12.5px;color:#55627A;line-height:1.7}
+.c-open{margin-top:10px;font-size:12px;font-weight:600;color:#2563EB}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <div>
+      <h1>测试用例执行器 · <span>dp-design 风格方案</span></h1>
+      <p>全新制作的 10 个独立原型页面（未复用任何旧模板），每页都可直接打开体验交互：<br/>点击“通过/失败/阻塞/跳过”按钮或按键盘 <b>1-4</b>，可模拟标记结果并联动顶部进度计数。</p>
+    </div>
+  </div>
+
+  <div class="note">📌 <b>使用方式：</b>点击任意卡片打开对应风格的完整页面 → 在新页面里用键盘 1-4 体验结果标记 → 返回本页切换其它风格对比。选好后告诉我风格编号，即可输出该风格的 DESIGN.md 设计规范并落地到 <b>static/style.css</b>。</div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+const S=[
+ {no:'01',file:'01-enterprise-blue.html',name:'经典企业蓝',cost:'低',lv:'easy',tags:'专业 · 稳重 · 低干扰',desc:'白色顶栏 + 蓝色主操作 + 左侧模块导航三栏布局，主流企业级工具质感，长时间执行不疲劳，改造量最小的“稳妥升级”。',top:'#FFFFFF',mid:'#2563EB',side:'#EAF1FE',foot:'#F3F6FB'},
+ {no:'02',file:'02-dark-pro.html',name:'深色夜间',cost:'中',lv:'mid',tags:'护眼 · 专注 · 类 IDE',desc:'深色画布 + 低饱和语义色 + 紧凑工具条，对标 IDE 体验，适合暗光环境下长时间执行用例。',top:'#131821',mid:'#3B6FE0',side:'#171C26',foot:'#0F1218'},
+ {no:'03',file:'03-minimal-mono.html',name:'极简黑白',cost:'低',lv:'easy',tags:'克制 · 高密度 · 无彩色',desc:'黑白灰三级层次 + 等宽字体点缀，1px 实线边框，视觉噪音最低，硬核工具感。',top:'#FFFFFF',mid:'#111111',side:'#FFFFFF',foot:'#FAFAFA'},
+ {no:'04',file:'04-glassmorphism.html',name:'玻璃拟态',cost:'中',lv:'mid',tags:'通透 · 现代 · 轻量',desc:'毛玻璃卡片 + 柔和渐变背景 + 大圆角，层次通透、视觉轻盈，现代感强。',top:'rgba(255,255,255,.6)',mid:'#7C5CFF',side:'rgba(255,255,255,.5)',foot:'#DCE9F7'},
+ {no:'05',file:'05-gradient-tech.html',name:'渐变科技',cost:'中',lv:'mid',tags:'未来感 · 数据可视化友好',desc:'深蓝底 + 青紫渐变 + 环形进度仪表盘，把执行进度与四态分布做成视觉焦点。',top:'#101632',mid:'#00D4FF',side:'#1A1440',foot:'#0B1026'},
+ {no:'06',file:'06-neumorphism.html',name:'新拟态',cost:'中',lv:'mid',tags:'柔和 · 立体 · 触感',desc:'同色系浮雕 + 内外阴影营造按压手感，无边框无杂色，界面像可触摸的实体。',top:'#E0E5EC',mid:'#3E7BFA',side:'#E0E5EC',foot:'#E0E5EC'},
+ {no:'07',file:'07-data-dense.html',name:'数据表格风',cost:'低',lv:'easy',tags:'Excel 基因 · 批量执行 · 极致密度',desc:'表格优先布局：用例列表 + 行内状态色块 + 右侧执行面板，对天天看表格的测试工程师最亲切。',top:'#FFFFFF',mid:'#3B6FB8',side:'#FFFFFF',foot:'#F0F2F6'},
+ {no:'08',file:'08-soft-nature.html',name:'自然柔和',cost:'低',lv:'easy',tags:'护眼 · 亲和 · 低饱和',desc:'低饱和绿 + 暖米色 + 大留白，彩色仅出现在状态标签与主按钮，轻松舒适的工作氛围。',top:'#FFFFFF',mid:'#4E9A62',side:'#FFFFFF',foot:'#EDF1E8'},
+ {no:'09',file:'09-retro-terminal.html',name:'复古终端',cost:'高',lv:'hard',tags:'CRT 绿字 · 打字机感',desc:'终端窗口形态：标题栏 + 输出区 + 命令块，CRT 扫描线与闪烁光标，极客彩蛋向。',top:'#0D120D',mid:'#39FF7A',side:'#0D120D',foot:'#0A0E0A'},
+ {no:'10',file:'10-cyberpunk.html',name:'赛博朋克',cost:'高',lv:'hard',tags:'高饱和 · 霓虹 · 冲击力',desc:'深紫底 + 霓虹品红/电青 + 斜切按钮 + 网格背景，冲击力最强，适合演示场景。',top:'#1C0F33',mid:'#FF2E9A',side:'#1C0F33',foot:'#12081F'}
+];
+const grid=document.getElementById('grid');
+S.forEach(s=>{
+  const a=document.createElement('a');
+  a.className='card';a.href=s.file;
+  a.innerHTML=`<div class="swatch">
+      <div class="s-top" style="background:${s.top}"></div>
+      <div class="s-mid"><div class="s-main" style="background:${s.mid}"></div><div class="s-side" style="background:${s.side}"></div></div>
+      <div class="s-foot" style="background:${s.foot}"></div>
+    </div>
+    <div class="c-body">
+      <div class="c-row"><span class="c-no">${s.no}</span><span class="c-name">${s.name}</span><span class="c-cost c-${s.lv}">落地成本：${s.cost}</span></div>
+      <div class="c-tags">${s.tags}</div>
+      <div class="c-desc">${s.desc}</div>
+      <div class="c-open">打开页面 →</div>
+    </div>`;
+  grid.appendChild(a);
+});
+</script>
+</body>
+</html>

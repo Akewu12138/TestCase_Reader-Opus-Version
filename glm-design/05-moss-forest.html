@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · 苔藓森林</title>
+<style>
+:root{
+  --bark:#2d3b2d; --bark-2:#3a4a38; --moss:#4a6741; --moss-light:#6b8a5f;
+  --cream:#f4f1ea; --cream-2:#ebe6db; --leaf:#8aa873; --clay:#c87f4a;
+  --text:#2d3b2d; --text-soft:#5c6b58; --text-faint:#8a9684;
+  --line:#d4d0c4; --line-soft:#e0dcd0;
+  --pass:#5a7a4e; --fail:#b8543c; --block:#c89a3c; --na:#8a9684;
+  --sans:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);background:var(--cream);color:var(--text);
+  font-size:15px;line-height:1.7;padding-bottom:84px;
+  background-image:radial-gradient(circle at 15% 20%,rgba(74,103,65,.05),transparent 50%),
+                   radial-gradient(circle at 85% 70%,rgba(138,168,115,.05),transparent 50%);}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:14px 26px;background:var(--bark);color:var(--cream);flex-wrap:wrap;
+  box-shadow:0 2px 12px rgba(45,59,45,.15);}
+.topbar-left{display:flex;align-items:center;gap:14px;min-width:0}
+.leaf-icon{flex:none;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  background:var(--moss);border-radius:50% 50% 50% 0;transform:rotate(-45deg)}
+.leaf-icon span{transform:rotate(45deg);font-size:15px}
+.brand{font-weight:600;font-size:18px;white-space:nowrap;letter-spacing:.5px}
+.file-name{color:var(--moss-light);font-size:13px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:220px}
+.topbar-right{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.btn{padding:7px 12px;border:1px solid var(--moss);background:transparent;color:var(--cream);
+  font-size:13px;cursor:pointer;font-family:var(--sans);white-space:nowrap;border-radius:18px;}
+.btn:hover{background:var(--bark-2)}
+.btn-primary{background:var(--leaf);color:var(--bark);border-color:var(--leaf);font-weight:600}
+.btn-primary:hover{background:#9cb884}
+.select{padding:6px 10px;border:1px solid var(--moss);background:transparent;font-size:13px;
+  color:var(--cream);max-width:150px;font-family:var(--sans);border-radius:18px}
+.select option{background:var(--bark)}
+.progress-wrap{display:flex;align-items:center;gap:14px;padding:12px 26px;max-width:1200px;margin:0 auto}
+.progress-label{font-size:13px;color:var(--text-soft);white-space:nowrap}
+.progress-bar{flex:1;height:10px;background:var(--cream-2);border-radius:999px;overflow:hidden;display:flex;
+  box-shadow:inset 0 1px 3px rgba(45,59,45,.1)}
+.progress-seg{height:100%}
+.progress-text{font-size:13px;color:var(--text);white-space:nowrap;font-weight:600}
+.main{max-width:1200px;margin:0 auto;padding:16px 26px 40px}
+.card{background:var(--cream);border:1px solid var(--line);border-radius:20px;padding:0;
+  box-shadow:0 4px 24px rgba(74,103,65,.08);overflow:hidden}
+.card-main{padding:28px 32px}
+.card-head{border-bottom:1px solid var(--line-soft);padding-bottom:16px;margin-bottom:6px}
+.badges{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.badge{font-size:12px;padding:3px 11px;border-radius:999px;background:var(--cream-2);color:var(--text-soft)}
+.badge-id{font-family:var(--sans);color:var(--moss);font-weight:600;background:rgba(74,103,65,.1)}
+.badge.p0{background:rgba(184,84,60,.12);color:var(--fail);font-weight:700}
+.badge.risk{background:rgba(200,154,60,.15);color:#9a7a2c}
+.badge.module{color:var(--text-soft)}
+.case-title{font-size:23px;line-height:1.45;margin:6px 0 0;font-weight:600;color:var(--bark)}
+.section{padding:16px 0;border-bottom:1px solid var(--line-soft)}
+.section:last-child{border-bottom:none}
+.section-title{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;
+  color:var(--moss);margin:0 0 10px;letter-spacing:.5px}
+.section-title::before{content:"";width:7px;height:7px;background:var(--leaf);border-radius:50% 0 50% 50%;
+  transform:rotate(45deg)}
+.section-body{white-space:pre-wrap;font-size:15px;line-height:1.8;color:var(--text)}
+.precond{background:rgba(138,168,115,.1);border-radius:12px;padding:13px 16px;font-size:14px;line-height:1.8;
+  border:1px solid rgba(138,168,115,.2)}
+.expected{background:rgba(90,122,78,.08);border-radius:12px;padding:13px 16px;font-size:14px;line-height:1.8;
+  border:1px solid rgba(90,122,78,.2)}
+.steps-list{margin:0;padding-left:0;list-style:none;font-size:14px}
+.steps-list li{position:relative;padding:8px 0 8px 30px;border-bottom:1px solid var(--line-soft)}
+.steps-list li:last-child{border-bottom:none}
+.steps-list li::before{content:counter(s);counter-increment:s;position:absolute;left:0;top:8px;
+  width:20px;height:20px;background:var(--moss);color:var(--cream);border-radius:50% 50% 50% 0;
+  transform:rotate(45deg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.steps-list li span{display:inline-block;transform:translateX(0)}
+.steps-list li::before{font-size:11px}
+.steps-list{counter-reset:s}
+.result-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.rbtn{padding:13px 8px;font-size:14px;font-weight:600;border:1.5px solid var(--line);
+  background:var(--cream);color:var(--text-soft);cursor:pointer;text-align:center;
+  font-family:var(--sans);border-radius:14px;transition:all .15s}
+.rbtn .kbd{font-size:11px;opacity:.6;margin-left:4px}
+.rbtn.pass.active{background:var(--pass);color:#fff;border-color:var(--pass)}
+.rbtn.fail.active{background:var(--fail);color:#fff;border-color:var(--fail)}
+.rbtn.block.active{background:var(--block);color:#fff;border-color:var(--block)}
+.rbtn.na.active{background:var(--na);color:#fff;border-color:var(--na)}
+.auto-advance{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-soft);margin:-4px 0 14px}
+.field{display:block;margin-bottom:14px}
+.field-label{display:block;font-size:12px;font-weight:600;color:var(--moss);margin-bottom:6px;letter-spacing:.3px}
+.field-input{width:100%;padding:10px 12px;border:1px solid var(--line);background:var(--cream);
+  font-size:14px;font-family:var(--sans);color:var(--text);resize:vertical;border-radius:12px}
+.field-input:focus{outline:none;border-color:var(--moss);box-shadow:0 0 0 3px rgba(74,103,65,.12)}
+.field-input.attn{border-color:var(--fail);box-shadow:0 0 0 3px rgba(184,84,60,.1)}
+.field-row.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.evidence{margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft)}
+.evidence-item{color:var(--moss);font-size:13px;display:block;padding:3px 0}
+.evidence-item::before{content:"🌿 "}
+.navbar{position:fixed;bottom:0;left:0;right:0;z-index:20;display:flex;align-items:center;
+  justify-content:center;gap:20px;padding:13px 20px;background:var(--bark);
+  box-shadow:0 -2px 12px rgba(45,59,45,.15)}
+.btn-nav{background:var(--leaf);color:var(--bark);border:none;font-size:15px;padding:11px 22px;
+  cursor:pointer;font-family:var(--sans);border-radius:999px;font-weight:600}
+.btn-nav:hover{background:#9cb884}
+.btn-nav:last-child{background:var(--cream);color:var(--bark)}
+.btn-nav .kbd{font-size:11px;opacity:.7;margin-left:4px}
+.nav-counter{font-size:14px;color:var(--moss-light)}
+@media(min-width:1100px){
+  .card{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:0;align-items:start}
+  .card-side{border-left:1px solid var(--line-soft);padding:28px 30px;position:sticky;top:78px;
+    max-height:calc(100vh - 165px);overflow:auto;background:var(--cream-2)}
+}
+@media(max-width:1099px){.card-side{border-top:1px solid var(--line-soft);padding:24px 32px;background:var(--cream-2)}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="leaf-icon"><span>🌿</span></div>
+    <span class="brand">测试用例执行器</span>
+    <span class="file-name">IND-1.14.2 工业 ROS 回归用例库.xlsx</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-primary">测试详情</button>
+    <button class="btn">表格视图</button>
+    <select class="select"><option>结果列：R3 回归</option></select>
+    <button class="btn">＋新建列</button>
+    <button class="btn">筛选·2</button>
+    <select class="select"><option>模块：倒车入库</option></select>
+    <button class="btn">下一条未测</button>
+    <button class="btn">导出子任务</button>
+    <button class="btn">导入结果</button>
+    <button class="btn">?</button>
+    <button class="btn">⋯</button>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <span class="progress-label">进度</span>
+  <div class="progress-bar">
+    <div class="progress-seg" style="width:30%;background:var(--pass)"></div>
+    <div class="progress-seg" style="width:8%;background:var(--fail)"></div>
+    <div class="progress-seg" style="width:4%;background:var(--block)"></div>
+    <div class="progress-seg" style="width:2%;background:var(--na)"></div>
+  </div>
+  <span class="progress-text">142 / 320 · 44%</span>
+</div>
+
+<main class="main">
+  <section class="card">
+    <div class="card-main">
+      <div class="card-head">
+        <div class="badges">
+          <span class="badge badge-id">IND-1.14.2-DCRK-007</span>
+          <span class="badge">功能</span>
+          <span class="badge p0">P0</span>
+          <span class="badge risk">风险：高</span>
+          <span class="badge module">倒车入库</span>
+        </div>
+        <h1 class="case-title">机器人从充电桩自主驶入倒车入库目标位并精准停靠</h1>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">前置条件</h2>
+        <div class="section-body precond">1. 机器人电量 ≥ 80%
+2. 充电桩已归位且网络正常
+3. 入库区无遮挡物，库位线清晰</div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">测试步骤</h2>
+        <ol class="steps-list">
+          <li><span>在 Web 端选择「倒车入库」任务并下发给机器人</span></li>
+          <li><span>观察机器人离桩并向目标库位移动</span></li>
+          <li><span>机器人执行倒车对准库位线，速度平滑无急停</span></li>
+          <li><span>确认停靠后上报「入库完成」状态</span></li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">预期结果</h2>
+        <div class="section-body expected">1. 机器人 8s 内离桩
+2. 倒车轨迹横向偏差 ≤ 3cm
+3. 最终停靠位姿误差 ≤ 2cm
+4. 状态变更为「已入库」，日志无 ERROR</div>
+      </div>
+    </div>
+
+    <aside class="card-side">
+      <h2 class="section-title">执行结果</h2>
+      <div class="result-buttons">
+        <button class="rbtn pass">通过<span class="kbd">1</span></button>
+        <button class="rbtn fail active">失败<span class="kbd">2</span></button>
+        <button class="rbtn block">阻塞<span class="kbd">3</span></button>
+        <button class="rbtn na">跳过<span class="kbd">4</span></button>
+      </div>
+      <label class="auto-advance"><input type="checkbox" checked> 标记通过/跳过后自动下一条</label>
+
+      <label class="field">
+        <span class="field-label">实际现象 / 结果</span>
+        <textarea class="field-input" rows="3">倒车时横向偏差 6.2cm，超出 3cm 阈值；重定位后二次入库偏差 2.4cm 达标。</textarea>
+      </label>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">发现时间</span>
+          <input class="field-input" value="2026-08-12 21:14:33">
+        </label>
+        <label class="field">
+          <span class="field-label">测试人员</span>
+          <input class="field-input" value="张工">
+        </label>
+      </div>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">BugID</span>
+          <input class="field-input attn" value="KT-2381">
+        </label>
+        <label class="field">
+          <span class="field-label">备注</span>
+          <input class="field-input" value="标定参数">
+        </label>
+      </div>
+      <div class="evidence">
+        <span class="field-label">失败证据</span>
+        <input class="field-input" placeholder="上传截图 / 日志 / 附件">
+        <span class="evidence-item">dock_trace_007.csv · 12 KB</span>
+        <span class="evidence-item">deviation_snapshot.png · 340 KB</span>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<footer class="navbar">
+  <button class="btn-nav">← 上一条<span class="kbd">←</span></button>
+  <span class="nav-counter">7 / 320（筛选中）</span>
+  <button class="btn-nav">下一条 →<span class="kbd">→</span></button>
+</footer>
+
+</body>
+</html>

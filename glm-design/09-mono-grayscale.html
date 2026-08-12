@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · Mono Grayscale</title>
+<style>
+:root{
+  --bg:#fafafa; --surface:#ffffff; --surface-2:#f4f4f5; --surface-3:#e4e4e7;
+  --text:#18181b; --text-soft:#52525b; --text-faint:#a1a1aa; --text-fainter:#d4d4d8;
+  --line:#e4e4e7; --line-soft:#f0f0f1;
+  --pass:#3f3f46; --fail:#18181b; --block:#71717a; --na:#a1a1aa;
+  --sans:"Inter","PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono","SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);
+  font-size:14px;line-height:1.6;padding-bottom:80px;-webkit-font-smoothing:antialiased;
+  font-feature-settings:"cv02","cv03","cv04";}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:11px 24px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap;}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{font-weight:600;font-size:15px;white-space:nowrap;letter-spacing:-.2px}
+.brand-dot{display:inline-block;width:6px;height:6px;background:var(--text);border-radius:50%;margin-right:8px;vertical-align:middle}
+.file-name{color:var(--text-faint);font-size:12px;font-family:var(--mono);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.topbar-right{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.btn{padding:6px 11px;border:1px solid var(--line);background:var(--surface);color:var(--text-soft);
+  font-size:12px;cursor:pointer;font-family:var(--sans);white-space:nowrap;border-radius:6px;transition:all .12s}
+.btn:hover{border-color:var(--text-faint);color:var(--text);background:var(--surface-2)}
+.btn-primary{background:var(--text);color:var(--surface);border-color:var(--text)}
+.btn-primary:hover{background:#000}
+.select{padding:5px 9px;border:1px solid var(--line);background:var(--surface);font-size:12px;
+  color:var(--text);max-width:140px;font-family:var(--sans);border-radius:6px}
+.progress-wrap{display:flex;align-items:center;gap:12px;padding:10px 24px;max-width:1240px;margin:0 auto}
+.progress-bar{flex:1;height:5px;background:var(--surface-3);border-radius:999px;overflow:hidden;display:flex}
+.progress-seg{height:100%}
+.progress-text{font-size:12px;color:var(--text-soft);white-space:nowrap;font-family:var(--mono)}
+.progress-text b{color:var(--text);font-weight:600}
+.main{max-width:1240px;margin:0 auto;padding:16px 24px 40px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:0;
+  box-shadow:0 1px 2px rgba(0,0,0,.03);}
+.card-main{padding:28px 32px}
+.card-head{padding-bottom:18px;margin-bottom:0;border-bottom:1px solid var(--line)}
+.case-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;font-family:var(--mono);font-size:12px;color:var(--text-faint)}
+.case-meta .id{color:var(--text);font-weight:500}
+.case-meta .sep{color:var(--text-fainter)}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.badge{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--surface-2);color:var(--text-soft);font-weight:500}
+.badge-id{background:transparent;color:var(--text-soft);border:1px solid var(--line);font-family:var(--mono)}
+.badge.p0{background:var(--text);color:var(--surface)}
+.badge.risk{background:transparent;border:1px solid var(--text-faint);color:var(--text-soft)}
+.case-title{font-size:22px;line-height:1.4;margin:4px 0 0;font-weight:600;letter-spacing:-.3px;color:var(--text)}
+.section{padding:18px 0;border-bottom:1px solid var(--line-soft)}
+.section:last-child{border-bottom:none}
+.section-title{font-size:11px;font-weight:600;color:var(--text-faint);margin:0 0 10px;
+  letter-spacing:1px;text-transform:uppercase}
+.section-body{white-space:pre-wrap;font-size:14px;line-height:1.75;color:var(--text)}
+.precond{background:var(--surface-2);border-radius:6px;padding:13px 16px;font-size:13px;line-height:1.75;color:var(--text-soft)}
+.expected{border-left:2px solid var(--text);padding:4px 0 4px 16px;font-size:14px;line-height:1.75}
+.steps-list{margin:0;padding:0;list-style:none;font-size:14px}
+.steps-list li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+.steps-list li:last-child{border-bottom:none}
+.steps-list li::before{content:counter(s,decimal-leading-zero);counter-increment:s;color:var(--text-faint);
+  font-family:var(--mono);font-size:12px;padding-top:2px}
+.steps-list{counter-reset:s}
+.result-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.rbtn{padding:12px 8px;font-size:13px;font-weight:500;border:1px solid var(--line);
+  background:var(--surface);color:var(--text-soft);cursor:pointer;text-align:center;
+  font-family:var(--sans);border-radius:8px;transition:all .12s}
+.rbtn .kbd{font-size:10px;color:var(--text-faint);margin-left:4px;font-family:var(--mono)}
+.rbtn:hover{border-color:var(--text-faint)}
+.rbtn.pass.active{background:var(--pass);color:var(--surface);border-color:var(--pass)}
+.rbtn.fail.active{background:var(--fail);color:var(--surface);border-color:var(--fail)}
+.rbtn.block.active{background:var(--block);color:var(--surface);border-color:var(--block)}
+.rbtn.na.active{background:var(--na);color:var(--surface);border-color:var(--na)}
+.auto-advance{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);margin:-2px 0 14px}
+.field{display:block;margin-bottom:13px}
+.field-label{display:block;font-size:11px;font-weight:500;color:var(--text-faint);margin-bottom:5px;letter-spacing:.2px}
+.field-input{width:100%;padding:9px 12px;border:1px solid var(--line);background:var(--surface);
+  font-size:13px;font-family:var(--sans);color:var(--text);resize:vertical;border-radius:7px;transition:border-color .12s}
+.field-input:focus{outline:none;border-color:var(--text)}
+.field-input.attn{border-color:var(--text);border-width:1.5px}
+.field-row.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.evidence{margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft)}
+.evidence-item{color:var(--text-soft);font-size:12px;font-family:var(--mono);display:block;padding:3px 0}
+.evidence-item::before{content:"— ";color:var(--text-faint)}
+.navbar{position:fixed;bottom:0;left:0;right:0;z-index:20;display:flex;align-items:center;
+  justify-content:center;gap:20px;padding:11px 20px;background:var(--surface);border-top:1px solid var(--line)}
+.btn-nav{background:var(--text);color:var(--surface);border:none;font-size:13px;padding:10px 20px;
+  cursor:pointer;font-family:var(--sans);border-radius:8px;font-weight:500}
+.btn-nav:hover{background:#000}
+.btn-nav .kbd{font-size:10px;opacity:.6;margin-left:4px;font-family:var(--mono)}
+.nav-counter{font-size:12px;color:var(--text-faint);font-family:var(--mono)}
+@media(min-width:1100px){
+  .card{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:0;align-items:start}
+  .card-side{border-left:1px solid var(--line);padding:28px 30px;position:sticky;top:62px;
+    max-height:calc(100vh - 155px);overflow:auto;background:var(--surface-2)}
+}
+@media(max-width:1099px){.card-side{border-top:1px solid var(--line);padding:24px 32px;background:var(--surface-2)}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="brand"><span class="brand-dot"></span>测试用例执行器</span>
+    <span class="file-name">IND-1.14.2_工业ROS回归用例库.xlsx</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-primary">测试详情</button>
+    <button class="btn">表格视图</button>
+    <select class="select"><option>R3 回归</option></select>
+    <button class="btn">＋新建列</button>
+    <button class="btn">筛选·2</button>
+    <select class="select"><option>倒车入库</option></select>
+    <button class="btn">下一条未测</button>
+    <button class="btn">导出</button>
+    <button class="btn">导入</button>
+    <button class="btn">?</button>
+    <button class="btn">⋯</button>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-bar">
+    <div class="progress-seg" style="width:30%;background:var(--pass)"></div>
+    <div class="progress-seg" style="width:8%;background:var(--fail)"></div>
+    <div class="progress-seg" style="width:4%;background:var(--block)"></div>
+    <div class="progress-seg" style="width:2%;background:var(--na)"></div>
+  </div>
+  <span class="progress-text"><b>142</b> / 320 · 44%</span>
+</div>
+
+<main class="main">
+  <section class="card">
+    <div class="card-main">
+      <div class="card-head">
+        <div class="case-meta">
+          <span class="id">IND-1.14.2-DCRK-007</span>
+          <span class="sep">/</span>
+          <span>功能</span>
+          <span class="sep">/</span>
+          <span>倒车入库</span>
+        </div>
+        <div class="badges">
+          <span class="badge badge-id">DCRK-007</span>
+          <span class="badge p0">P0</span>
+          <span class="badge risk">风险·高</span>
+        </div>
+        <h1 class="case-title">机器人从充电桩自主驶入倒车入库目标位并精准停靠</h1>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">前置条件</h2>
+        <div class="section-body precond">1. 机器人电量 ≥ 80%
+2. 充电桩已归位且网络正常
+3. 入库区无遮挡物，库位线清晰</div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">测试步骤</h2>
+        <ol class="steps-list">
+          <li>在 Web 端选择「倒车入库」任务并下发给机器人</li>
+          <li>观察机器人离桩并向目标库位移动</li>
+          <li>机器人执行倒车对准库位线，速度平滑无急停</li>
+          <li>确认停靠后上报「入库完成」状态</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">预期结果</h2>
+        <div class="section-body expected">1. 机器人 8s 内离桩
+2. 倒车轨迹横向偏差 ≤ 3cm
+3. 最终停靠位姿误差 ≤ 2cm
+4. 状态变更为「已入库」，日志无 ERROR</div>
+      </div>
+    </div>
+
+    <aside class="card-side">
+      <h2 class="section-title">执行结果</h2>
+      <div class="result-buttons">
+        <button class="rbtn pass">通过<span class="kbd">1</span></button>
+        <button class="rbtn fail active">失败<span class="kbd">2</span></button>
+        <button class="rbtn block">阻塞<span class="kbd">3</span></button>
+        <button class="rbtn na">跳过<span class="kbd">4</span></button>
+      </div>
+      <label class="auto-advance"><input type="checkbox" checked> 自动下一条</label>
+
+      <label class="field">
+        <span class="field-label">实际现象</span>
+        <textarea class="field-input" rows="3">倒车时横向偏差 6.2cm，超出 3cm 阈值；重定位后二次入库偏差 2.4cm 达标。</textarea>
+      </label>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">发现时间</span>
+          <input class="field-input" value="2026-08-12 21:14:33">
+        </label>
+        <label class="field">
+          <span class="field-label">测试人员</span>
+          <input class="field-input" value="张工">
+        </label>
+      </div>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">BugID</span>
+          <input class="field-input attn" value="KT-2381">
+        </label>
+        <label class="field">
+          <span class="field-label">备注</span>
+          <input class="field-input" value="标定参数">
+        </label>
+      </div>
+      <div class="evidence">
+        <span class="field-label">失败证据</span>
+        <input class="field-input" placeholder="上传截图 / 日志">
+        <span class="evidence-item">dock_trace_007.csv · 12KB</span>
+        <span class="evidence-item">deviation_snapshot.png · 340KB</span>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<footer class="navbar">
+  <button class="btn-nav">← 上一条<span class="kbd">←</span></button>
+  <span class="nav-counter">007 / 320</span>
+  <button class="btn-nav">下一条 →<span class="kbd">→</span></button>
+</footer>
+
+</body>
+</html>

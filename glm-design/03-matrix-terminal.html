@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · terminal</title>
+<style>
+:root{
+  --bg:#0a0e0a; --bg-2:#0f1410; --green:#00ff41; --green-dim:#008f11; --green-faint:#00441f;
+  --amber:#ffb000; --red:#ff5555; --white:#c8ffd0;
+  --mono:"JetBrains Mono","Cascadia Code","Consolas","Courier New",monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--mono);background:var(--bg);color:var(--green);
+  font-size:13px;line-height:1.6;padding-bottom:84px;
+  text-shadow:0 0 4px rgba(0,255,65,.4);}
+.topbar{position:sticky;top:0;z-index:20;background:var(--bg-2);border-bottom:1px solid var(--green-dim);
+  padding:0;}
+.term-bar{display:flex;align-items:center;gap:10px;padding:6px 14px;border-bottom:1px solid var(--green-faint);
+  background:#000}
+.term-dots{display:flex;gap:6px}
+.term-dots span{width:11px;height:11px;border-radius:50%;border:1px solid var(--green-dim)}
+.term-dots span:nth-child(1){background:var(--red);border-color:var(--red)}
+.term-dots span:nth-child(2){background:var(--amber);border-color:var(--amber)}
+.term-dots span:nth-child(3){background:var(--green);border-color:var(--green)}
+.term-title{font-size:11px;color:var(--green-dim);letter-spacing:1px}
+.topbar-body{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;flex-wrap:wrap}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{font-weight:700;font-size:14px;color:var(--green);letter-spacing:1px}
+.brand::before{content:"$ ";color:var(--green-dim)}
+.file-name{color:var(--green-dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
+.file-name::before{content:"cat "}
+.topbar-right{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.btn{padding:5px 9px;border:1px solid var(--green-dim);background:transparent;color:var(--green);
+  font-size:11px;cursor:pointer;font-family:var(--mono);white-space:nowrap;border-radius:0}
+.btn:hover{background:var(--green-faint);border-color:var(--green)}
+.btn-primary{background:var(--green);color:#000;border-color:var(--green);text-shadow:none}
+.btn-primary:hover{background:var(--white)}
+.select{padding:4px 8px;border:1px solid var(--green-dim);background:#000;font-size:11px;
+  color:var(--green);max-width:140px;font-family:var(--mono);border-radius:0}
+.select option{background:#000}
+.progress-wrap{display:flex;align-items:center;gap:10px;padding:8px 14px;max-width:1240px;margin:0 auto}
+.progress-label{font-size:11px;color:var(--green-dim);white-space:nowrap}
+.progress-label::before{content:"[progress] "}
+.progress-bar{flex:1;height:14px;background:#000;border:1px solid var(--green-dim);
+  display:flex;overflow:hidden;position:relative}
+.progress-seg{height:100%}
+.progress-bar::after{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent 0,transparent 8px,rgba(0,255,65,.06) 8px,rgba(0,255,65,.06) 9px);
+  pointer-events:none}
+.progress-text{font-size:11px;color:var(--green);white-space:nowrap}
+.main{max-width:1240px;margin:0 auto;padding:14px 14px 40px}
+.card{background:var(--bg-2);border:1px solid var(--green-dim);padding:0;position:relative}
+.card-main{padding:18px 20px}
+.card-head{border-bottom:1px dashed var(--green-dim);padding-bottom:12px;margin-bottom:4px}
+.prompt-line{color:var(--green-dim);font-size:11px;margin-bottom:8px}
+.prompt-line span{color:var(--amber)}
+.badges{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.badge{font-size:11px;padding:1px 6px;border:1px solid var(--green-faint);color:var(--green-dim)}
+.badge-id{color:var(--amber);border-color:var(--amber)}
+.badge.p0{color:var(--red);border-color:var(--red)}
+.badge.risk{color:var(--amber);border-color:var(--amber)}
+.case-title{font-size:18px;line-height:1.5;margin:4px 0 0;color:var(--green);font-weight:400}
+.case-title::before{content:"# "}
+.section{padding:14px 0;border-bottom:1px dashed var(--green-faint)}
+.section:last-child{border-bottom:none}
+.section-title{font-size:12px;color:var(--amber);margin:0 0 8px;font-weight:700;letter-spacing:1px}
+.section-title::before{content:"┌─ "}
+.section-title::after{content:" ─┐"}
+.section-body{white-space:pre-wrap;font-size:13px;line-height:1.8;color:var(--green)}
+.precond{border:1px solid var(--green-faint);padding:10px 14px;background:#000;font-size:12px;line-height:1.8}
+.precond::before{content:"$ precond: ";color:var(--green-dim)}
+.expected{border:1px solid var(--green-dim);padding:10px 14px;background:#000;font-size:12px;line-height:1.8;color:var(--green)}
+.expected::before{content:"$ expected: ";color:var(--green-dim)}
+.steps-list{margin:0;padding:0;list-style:none;font-size:12px}
+.steps-list li{padding:6px 0 6px 22px;border-bottom:1px dotted var(--green-faint);position:relative}
+.steps-list li:last-child{border-bottom:none}
+.steps-list li::before{content:">";position:absolute;left:4px;top:6px;color:var(--amber)}
+.result-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+.rbtn{padding:11px 6px;font-size:12px;font-weight:700;border:1px solid var(--green-dim);
+  background:#000;color:var(--green-dim);cursor:pointer;text-align:center;font-family:var(--mono);border-radius:0}
+.rbtn .kbd{font-size:10px;opacity:.6;margin-left:3px}
+.rbtn.pass.active{background:var(--green);color:#000;border-color:var(--green);text-shadow:none}
+.rbtn.fail.active{background:var(--red);color:#000;border-color:var(--red);text-shadow:none}
+.rbtn.block.active{background:var(--amber);color:#000;border-color:var(--amber);text-shadow:none}
+.rbtn.na.active{background:var(--green-dim);color:#000;border-color:var(--green-dim);text-shadow:none}
+.auto-advance{font-size:11px;color:var(--green-dim);margin:-2px 0 12px}
+.auto-advance::before{content:"[x] "}
+.field{display:block;margin-bottom:11px}
+.field-label{display:block;font-size:11px;color:var(--amber);margin-bottom:4px;letter-spacing:1px}
+.field-label::before{content:"# "}
+.field-input{width:100%;padding:7px 10px;border:1px solid var(--green-faint);background:#000;
+  font-size:12px;font-family:var(--mono);color:var(--green);resize:vertical;border-radius:0}
+.field-input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+.field-input.attn{border-color:var(--red)}
+.field-row.two-col{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.evidence{margin-top:12px;padding-top:12px;border-top:1px dashed var(--green-faint)}
+.evidence-item{color:var(--green-dim);font-size:11px;display:block;padding:2px 0}
+.evidence-item::before{content:"-rwxr-xr-x  "}
+.navbar{position:fixed;bottom:0;left:0;right:0;z-index:20;background:var(--bg-2);border-top:1px solid var(--green-dim)}
+.navbar-inner{display:flex;align-items:center;justify-content:center;gap:18px;padding:10px 20px}
+.btn-nav{background:var(--green);color:#000;border:none;font-size:13px;padding:9px 18px;
+  cursor:pointer;font-family:var(--mono);border-radius:0;font-weight:700;text-shadow:none}
+.btn-nav .kbd{font-size:10px;opacity:.6;margin-left:4px}
+.nav-counter{font-size:12px;color:var(--green-dim)}
+.nav-counter::before{content:"["}
+.nav-counter::after{content:"]"}
+.scan{position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(0,255,65,.02) 0,rgba(0,255,65,.02) 1px,transparent 1px,transparent 3px);}
+@media(min-width:1100px){
+  .card{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:0;align-items:start}
+  .card-side{border-left:1px dashed var(--green-dim);padding:18px 20px;position:sticky;top:96px;
+    max-height:calc(100vh - 170px);overflow:auto}
+}
+@media(max-width:1099px){.card-side{border-top:1px dashed var(--green-dim);padding:18px 20px}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="term-bar">
+    <div class="term-dots"><span></span><span></span><span></span></div>
+    <span class="term-title">test-runner@ind-ros: ~/cases/DCRK</span>
+  </div>
+  <div class="topbar-body">
+    <div class="topbar-left">
+      <span class="brand">testcase-runner</span>
+      <span class="file-name">IND-1.14.2_工业ROS回归用例库.xlsx</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-primary">测试详情</button>
+      <button class="btn">表格视图</button>
+      <select class="select"><option>R3 回归</option></select>
+      <button class="btn">+ 新建列</button>
+      <button class="btn">筛选·2</button>
+      <select class="select"><option>倒车入库</option></select>
+      <button class="btn">下一条未测</button>
+      <button class="btn">导出子任务</button>
+      <button class="btn">导入结果</button>
+      <button class="btn">?</button>
+      <button class="btn">···</button>
+    </div>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <span class="progress-label">142/320</span>
+  <div class="progress-bar">
+    <div class="progress-seg" style="width:30%;background:var(--green)"></div>
+    <div class="progress-seg" style="width:8%;background:var(--red)"></div>
+    <div class="progress-seg" style="width:4%;background:var(--amber)"></div>
+    <div class="progress-seg" style="width:2%;background:var(--green-dim)"></div>
+  </div>
+  <span class="progress-text">44%</span>
+</div>
+
+<main class="main">
+  <section class="card">
+    <div class="card-main">
+      <div class="prompt-line"><span>user@runner</span>:~/cases$ <span style="color:var(--green)">show --case 007</span></div>
+      <div class="card-head">
+        <div class="badges">
+          <span class="badge badge-id">IND-1.14.2-DCRK-007</span>
+          <span class="badge">FUNCTIONAL</span>
+          <span class="badge p0">P0</span>
+          <span class="badge risk">RISK:HIGH</span>
+          <span class="badge">倒车入库</span>
+        </div>
+        <h1 class="case-title">机器人从充电桩自主驶入倒车入库目标位并精准停靠</h1>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">PRECONDITION</h2>
+        <div class="section-body precond">1. 机器人电量 ≥ 80%
+2. 充电桩已归位且网络正常
+3. 入库区无遮挡物，库位线清晰</div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">STEPS</h2>
+        <ol class="steps-list">
+          <li>在 Web 端选择「倒车入库」任务并下发给机器人</li>
+          <li>观察机器人离桩并向目标库位移动</li>
+          <li>机器人执行倒车对准库位线，速度平滑无急停</li>
+          <li>确认停靠后上报「入库完成」状态</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">EXPECTED</h2>
+        <div class="section-body expected">1. 机器人 8s 内离桩
+2. 倒车轨迹横向偏差 ≤ 3cm
+3. 最终停靠位姿误差 ≤ 2cm
+4. 状态变更为「已入库」，日志无 ERROR</div>
+      </div>
+    </div>
+
+    <aside class="card-side">
+      <h2 class="section-title">RESULT</h2>
+      <div class="result-buttons">
+        <button class="rbtn pass">PASS<span class="kbd">[1]</span></button>
+        <button class="rbtn fail active">FAIL<span class="kbd">[2]</span></button>
+        <button class="rbtn block">BLOCK<span class="kbd">[3]</span></button>
+        <button class="rbtn na">SKIP<span class="kbd">[4]</span></button>
+      </div>
+      <div class="auto-advance">自动下一条</div>
+
+      <label class="field">
+        <span class="field-label">ACTUAL</span>
+        <textarea class="field-input" rows="3">倒车时横向偏差 6.2cm，超出 3cm 阈值；重定位后二次入库偏差 2.4cm 达标。</textarea>
+      </label>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">FOUND_AT</span>
+          <input class="field-input" value="2026-08-12 21:14:33">
+        </label>
+        <label class="field">
+          <span class="field-label">TESTER</span>
+          <input class="field-input" value="张工">
+        </label>
+      </div>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">BUG_ID</span>
+          <input class="field-input attn" value="KT-2381">
+        </label>
+        <label class="field">
+          <span class="field-label">NOTE</span>
+          <input class="field-input" value="标定参数">
+        </label>
+      </div>
+      <div class="evidence">
+        <span class="field-label">EVIDENCE</span>
+        <input class="field-input" placeholder="upload screenshot / log">
+        <span class="evidence-item">dock_trace_007.csv · 12KB</span>
+        <span class="evidence-item">deviation_snapshot.png · 340KB</span>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<footer class="navbar">
+  <div class="navbar-inner">
+    <button class="btn-nav">← PREV<span class="kbd">←</span></button>
+    <span class="nav-counter">007/320</span>
+    <button class="btn-nav">NEXT →<span class="kbd">→</span></button>
+  </div>
+</footer>
+<div class="scan"></div>
+
+</body>
+</html>

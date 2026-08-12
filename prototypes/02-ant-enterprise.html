@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · 企业级 · Ant Design</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --text: #1f2329;
+  --text-soft: #646a73;
+  --border: #dee0e3;
+  --primary: #1677ff;
+  --primary-soft: #e8f1ff;
+  --pass: #52c41a;
+  --fail: #ff4d4f;
+  --block: #faad14;
+  --na: #8c9099;
+  --pass-soft: #f0fbe9;
+  --fail-soft: #fff1f0;
+  --block-soft: #fff7e6;
+  --na-soft: #f2f3f5;
+  --shadow: 0 2px 10px rgba(0,0,0,.05);
+  --radius: 8px;
+  --font: PingFang SC', 'Microsoft YaHei', -apple-system, system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.62;
+  padding-bottom: 80px;
+  -webkit-font-smoothing: antialiased;
+}
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 22px; background: var(--card); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.topbar-left { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.brand { font-weight: 700; font-size: 18px; white-space: nowrap; }
+.file-name { color: var(--text-soft); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.btn {
+  padding: 8px 13px; border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px);
+  background: var(--card); color: var(--text); font-size: 13px; cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.btn:hover { opacity: .88; }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-icon { padding: 8px 12px; font-weight: 700; }
+.select {
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px);
+  background: var(--card); font-size: 13px; color: var(--text); max-width: 170px; font-family: inherit;
+}
+.progress-wrap { display: flex; align-items: center; gap: 12px; padding: 10px 22px; max-width: 1180px; margin: 0 auto; }
+.progress-bar { flex: 1; height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; position: relative; display: flex; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--pass)); }
+.progress-seg { height: 100%; }
+.progress-text { font-size: 13px; color: var(--text-soft); white-space: nowrap; }
+.main { max-width: 1180px; margin: 0 auto; padding: 14px 22px 40px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 26px 30px; }
+.card-head { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 6px; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
+.badge-id { font-family: var(--font-mono); }
+.badge-module { background: var(--bg); color: var(--text-soft); }
+.badge.p0 { background: var(--fail-soft); color: var(--fail); }
+.badge.p1 { background: var(--block-soft); color: var(--block); }
+.badge.risk-high { background: var(--fail-soft); color: var(--fail); }
+.case-title { font-size: 24px; line-height: 1.35; margin: 6px 0; }
+.section { padding: 16px 0; border-bottom: 1px dashed var(--border); }
+.section-title { font-size: 14px; font-weight: 700; color: var(--primary); margin: 0 0 10px; letter-spacing: .3px; }
+.section-body { white-space: pre-wrap; font-size: 15px; }
+.precond { background: var(--primary-soft); border-left: 3px solid var(--primary); padding: 12px 16px; border-radius: 8px; }
+.expected { background: var(--pass-soft); border-left: 3px solid var(--pass); padding: 12px 16px; border-radius: 8px; }
+.steps-list { margin: 0; padding-left: 22px; font-size: 15px; }
+.steps-list li { margin: 7px 0; }
+.result-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.rbtn {
+  padding: 14px 10px; font-size: 15px; font-weight: 700; border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) - 2px); background: var(--card); color: var(--text-soft); cursor: pointer; text-align: center;
+}
+.rbtn .kbd { font-size: 11px; opacity: .6; border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; margin-left: 4px; }
+.rbtn.pass.active { background: var(--pass); color: #fff; border-color: var(--pass); }
+.rbtn.fail.active { background: var(--fail); color: #fff; border-color: var(--fail); }
+.rbtn.block.active { background: var(--block); color: #fff; border-color: var(--block); }
+.rbtn.na.active { background: var(--na); color: #fff; border-color: var(--na); }
+.auto-advance { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-soft); margin: -6px 0 16px; cursor: pointer; }
+.field { display: block; margin-bottom: 14px; }
+.field-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-soft); margin-bottom: 6px; }
+.field-input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px);
+  font-size: 14px; font-family: inherit; color: var(--text); background: var(--card); resize: vertical;
+}
+.field-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.field-input.attn { border-color: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft); }
+.field-row.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.evidence { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+.evidence-actions { display: flex; gap: 8px; }
+.evidence-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.evidence-item { color: var(--primary); font-size: 13px; }
+.navbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center; gap: 20px; padding: 12px 20px;
+  background: var(--card); border-top: 1px solid var(--border);
+}
+.btn-nav { background: var(--primary); color: #fff; border: none; font-size: 15px; padding: 11px 20px; border-radius: calc(var(--radius) - 4px); cursor: pointer; font-family: inherit; }
+.nav-counter { font-size: 14px; color: var(--text-soft); }
+.btn-nav .kbd, .navbar .kbd { font-size: 11px; opacity: .75; border: 1px solid rgba(255,255,255,.5); border-radius: 4px; padding: 0 4px; }
+@media (min-width: 1100px) {
+  .card { display: grid; grid-template-columns: minmax(0,1fr) 380px; gap: 0 36px; align-items: start; }
+  .card-side { position: sticky; top: 74px; border-left: 1px solid var(--border); padding-left: 30px; max-height: calc(100vh - 160px); overflow: auto; }
+}
+@media (max-width: 1099px) {
+  .card-side { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 18px; }
+}
+
+.btn{border-radius:6px;} .rbtn{border-radius:6px;} .card{border:1px solid #e3e6eb;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="brand">测试用例执行器</span>
+    <span class="file-name">IND-1.14.2 工业 ROS 回归用例库.xlsx</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-primary">测试详情</button>
+    <button class="btn">表格视图</button>
+    <select class="select"><option>结果列：R3 回归</option><option>结果列：R2 冒烟</option></select>
+    <button class="btn">＋新建列</button>
+    <button class="btn">筛选·2</button>
+    <select class="select"><option>模块：倒车入库</option></select>
+    <button class="btn">下一条未测</button>
+    <button class="btn">导出子任务</button>
+    <button class="btn">导入结果</button>
+    <button class="btn btn-icon">?</button>
+    <button class="btn btn-icon">···</button>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-bar">
+    <div class="progress-fill" style="width:44%"></div>
+    <div class="progress-seg" style="width:30%;background:var(--pass)"></div>
+    <div class="progress-seg" style="width:6%;background:var(--fail)"></div>
+    <div class="progress-seg" style="width:4%;background:var(--block)"></div>
+    <div class="progress-seg" style="width:4%;background:var(--na)"></div>
+  </div>
+  <span class="progress-text">已完成 142 / 320（44%）· 筛选中</span>
+</div>
+
+<main class="main">
+  <section class="card">
+    <div class="card-main">
+      <div class="card-head">
+        <div class="badges">
+          <span class="badge badge-id">IND-1.14.2-DCRK-007</span>
+          <span class="badge">功能</span>
+          <span class="badge p0">P0</span>
+          <span class="badge risk-high">风险:高</span>
+          <span class="badge badge-module">倒车入库</span>
+        </div>
+        <h1 class="case-title">机器人从充电桩自主驶入倒车入库目标位并精准停靠</h1>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">前置条件</h2>
+        <div class="section-body precond">1. 机器人电量 ≥ 80%
+2. 充电桩已归位且网络正常
+3. 入库区无遮挡物，库位线清晰</div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">测试步骤</h2>
+        <ol class="steps-list">
+          <li>在 Web 端选择「倒车入库」任务并下发给机器人</li>
+          <li>观察机器人离桩并向目标库位移动</li>
+          <li>机器人执行倒车对准库位线，速度平滑无急停</li>
+          <li>确认停靠后上报「入库完成」状态</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">预期结果</h2>
+        <div class="section-body expected">1. 机器人 8s 内离桩
+2. 倒车轨迹横向偏差 ≤ 3cm
+3. 最终停靠位姿误差 ≤ 2cm
+4. 状态变更为「已入库」，日志无 ERROR</div>
+      </div>
+    </div>
+
+    <aside class="card-side">
+      <h2 class="section-title">执行结果</h2>
+      <div class="result-buttons">
+        <button class="rbtn pass">通过 <span class="kbd">1</span></button>
+        <button class="rbtn fail active">失败 <span class="kbd">2</span></button>
+        <button class="rbtn block">阻塞 <span class="kbd">3</span></button>
+        <button class="rbtn na">跳过 <span class="kbd">4</span></button>
+      </div>
+      <label class="auto-advance"><input type="checkbox" checked> 标记通过/跳过后自动下一条</label>
+
+      <label class="field">
+        <span class="field-label">实际现象 / 结果</span>
+        <textarea class="field-input" rows="3">倒车时横向偏差 6.2cm，超出 3cm 阈值；重定位后二次入库偏差 2.4cm 达标。</textarea>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">发现时间</span>
+          <input class="field-input" value="2026-08-12 21:14:33">
+        </label>
+      </div>
+
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">BugID</span>
+          <input class="field-input attn" placeholder="关联缺陷编号" value="KT-2381">
+        </label>
+        <label class="field">
+          <span class="field-label">测试人员</span>
+          <input class="field-input" value="张工">
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">备注 / 问题描述</span>
+        <textarea class="field-input" rows="2">首次入库横向超差，疑似车位线识别置信度偏低，需研发确认标定参数。</textarea>
+      </label>
+
+      <div class="evidence">
+        <div class="field-label">失败证据</div>
+        <div class="evidence-actions">
+          <input class="field-input" placeholder="上传截图 / 日志 / 附件">
+        </div>
+        <div class="evidence-list">
+          <span class="evidence-item">dock_trace_007.csv · 12 KB</span>
+          <span class="evidence-item">deviation_snapshot.png · 340 KB</span>
+        </div>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<footer class="navbar">
+  <button class="btn btn-nav">← 上一条 <span class="kbd">←</span></button>
+  <span class="nav-counter">7 / 320（筛选中）</span>
+  <button class="btn btn-nav">下一条 → <span class="kbd">→</span></button>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · 十种风格原型画廊</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "PingFang SC","Microsoft YaHei",system-ui,sans-serif; background:#0f1115; color:#e8eaf0; padding:36px 28px 60px; }
+  .g-head { max-width:1280px; margin:0 auto 26px; }
+  .g-head h1 { font-size:26px; margin:0 0 8px; }
+  .g-head p { color:#9aa3b2; margin:0; font-size:14px; line-height:1.7; }
+  .g-grid { max-width:1280px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:22px; }
+  .g-card { background:#171a21; border:1px solid #272c38; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; transition:transform .15s ease, border-color .15s ease; }
+  .g-card:hover { transform:translateY(-3px); border-color:#3b4252; }
+  .g-preview { position:relative; height:300px; overflow:hidden; background:#fff; border-bottom:1px solid #272c38; }
+  .g-preview iframe { position:absolute; top:0; left:0; width:1280px; height:860px; border:0; transform:scale(.39); transform-origin:0 0; pointer-events:none; }
+  .g-meta { padding:14px 16px 16px; display:flex; align-items:flex-start; gap:12px; }
+  .g-no { flex:none; width:30px; height:30px; border-radius:8px; background:#2a3140; color:#cdd3e0; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .g-text { flex:1; min-width:0; }
+  .g-text h3 { margin:2px 0 6px; font-size:16px; }
+  .g-text p { margin:0; font-size:13px; color:#9aa3b2; line-height:1.6; }
+  .g-open { flex:none; align-self:center; padding:8px 12px; border-radius:8px; background:#4f6ef7; color:#fff; text-decoration:none; font-size:13px; font-weight:600; }
+  .g-open:hover { opacity:.9; }
+</style>
+</head>
+<body>
+  <div class="g-head">
+    <h1>测试用例执行器 · 十种风格原型</h1>
+    <p>同一执行界面（顶栏 + 进度 + 用例卡片左读右写 + 底部导航），10 种设计语言。点击任意卡片「打开」查看全尺寸交互版；选定方向后我可据此落地为完整设计规范（DESIGN.md）。</p>
+  </div>
+  <div class="g-grid">
+    <article class="g-card">
+      <div class="g-preview"><iframe src="01-apple-minimal.html" loading="lazy" title="极简留白 · Apple"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">01</div>
+        <div class="g-text">
+          <h3>极简留白 · Apple</h3>
+          <p>大留白、弱边框、柔和阴影。信息层级靠排版而非色块，长时间阅读无疲劳。</p>
+        </div>
+        <a class="g-open" href="01-apple-minimal.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="02-ant-enterprise.html" loading="lazy" title="企业级 · Ant Design"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">02</div>
+        <div class="g-text">
+          <h3>企业级 · Ant Design</h3>
+          <p>清晰栅格、克制蓝色、实边框。结构严谨、可预期，适合功能密集的 B 端工具。</p>
+        </div>
+        <a class="g-open" href="02-ant-enterprise.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="03-linear-dark.html" loading="lazy" title="暗色高效 · Linear"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">03</div>
+        <div class="g-text">
+          <h3>暗色高效 · Linear</h3>
+          <p>近黑底 + 靛蓝强调，高对比、紧凑。为长时间盯屏的执行场景降低眩光。</p>
+        </div>
+        <a class="g-open" href="03-linear-dark.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="04-stripe-saas.html" loading="lazy" title="清新 SaaS · Stripe"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">04</div>
+        <div class="g-text">
+          <h3>清新 SaaS · Stripe</h3>
+          <p>紫蓝渐变点缀、圆角亲和、轻飘。现代 SaaS 质感，专业而不冰冷。</p>
+        </div>
+        <a class="g-open" href="04-stripe-saas.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="05-notion-doc.html" loading="lazy" title="文档协作 · Notion"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">05</div>
+        <div class="g-text">
+          <h3>文档协作 · Notion</h3>
+          <p>中性灰、近无边框、强排版。把用例当作文档来读，弱化工具感、强化内容。</p>
+        </div>
+        <a class="g-open" href="05-notion-doc.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="06-supabase-dev.html" loading="lazy" title="开发者暗 · Supabase"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">06</div>
+        <div class="g-text">
+          <h3>开发者暗 · Supabase</h3>
+          <p>深灰底 + 品牌绿强调，等宽编号。技术气质、数据可读，贴近研发协作语境。</p>
+        </div>
+        <a class="g-open" href="06-supabase-dev.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="07-jira-dense.html" loading="lazy" title="高密度 · Jira"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">07</div>
+        <div class="g-text">
+          <h3>高密度 · Jira</h3>
+          <p>小字号、紧凑间距、锐角、强状态色。单位屏幕信息量最高，适合批量扫读。</p>
+        </div>
+        <a class="g-open" href="07-jira-dense.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="08-glass-frosted.html" loading="lazy" title="玻璃拟态 · Glassmorphism"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">08</div>
+        <div class="g-text">
+          <h3>玻璃拟态 · Glassmorphism</h3>
+          <p>彩色渐变背景 + 毛玻璃卡片，半透明层叠。视觉轻盈通透，适合演示与汇报场景。</p>
+        </div>
+        <a class="g-open" href="08-glass-frosted.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="09-vercel-geometric.html" loading="lazy" title="几何现代 · Vercel"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">09</div>
+        <div class="g-text">
+          <h3>几何现代 · Vercel</h3>
+          <p>黑白单色、锐角、强对比、网格感。极简克制、品牌感强，去装饰化。</p>
+        </div>
+        <a class="g-open" href="09-vercel-geometric.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article>
+
+    <article class="g-card">
+      <div class="g-preview"><iframe src="10-clay-warm.html" loading="lazy" title="暖色人文 · Clay"></iframe></div>
+      <div class="g-meta">
+        <div class="g-no">10</div>
+        <div class="g-text">
+          <h3>暖色人文 · Clay</h3>
+          <p>暖米底 + 珊瑚强调、大圆角、柔和大阴影。亲和治愈，缓解测试疲劳与焦虑。</p>
+        </div>
+        <a class="g-open" href="10-clay-warm.html" target="_blank" rel="noopener">打开 ↗</a>
+      </div>
+    </article></div>
+</body>
+</html>

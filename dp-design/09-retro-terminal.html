@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>09 · 复古终端 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Courier New","SF Mono",Consolas,monospace;background:#0A0E0A;color:#39FF7A;font-size:14px}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px)}
+
+.demo{background:#0D120D;border-bottom:1px solid #2A4A31;font-size:12px;padding:7px 16px;display:flex;gap:14px;align-items:center}
+.demo b{color:#FFB03C}
+.demo .tag{background:#39FF7A;color:#04140A;padding:1px 8px;font-size:11px;font-weight:700}
+.demo span{color:#2E9E55}
+
+.app{max-width:1260px;margin:0 auto;min-height:calc(100vh - 30px);display:flex;flex-direction:column;padding:16px;position:relative;z-index:1}
+
+/* 终端窗口 */
+.term{flex:1;display:flex;flex-direction:column;border:2px solid #2A4A31;background:#0D120D;box-shadow:0 0 24px rgba(57,255,122,.12)}
+
+/* 标题栏 */
+.term-bar{display:flex;align-items:center;gap:10px;background:#0D120D;border-bottom:1px solid #2A4A31;padding:8px 14px;font-size:12px}
+.term-bar .dots{display:flex;gap:6px}
+.term-bar .dots i{width:10px;height:10px;border-radius:50%;display:block}
+.term-bar .dots i:nth-child(1){background:#FF5C5C}.term-bar .dots i:nth-child(2){background:#FFB03C}.term-bar .dots i:nth-child(3){background:#39FF7A}
+.term-bar .title{color:#5FE08A;letter-spacing:1px}
+.term-bar .title::before{content:"$ ";color:#FFB03C}
+.term-bar .right{margin-left:auto;color:#2E9E55;display:flex;gap:14px}
+.term-bar .right b{color:#FFB03C}
+
+/* 输出区 */
+.term-out{flex:1;overflow:auto;padding:14px 16px;font-size:13px;line-height:1.8}
+.line{white-space:pre-wrap;word-break:break-all}
+.line .ln{color:#1E5C33;margin-right:10px;user-select:none}
+.line .cmd{color:#5FE08A}
+.line .hl{color:#FFB03C;font-weight:700}
+.line .ok{color:#39FF7A;font-weight:700}
+.line .err{color:#FF5C5C;font-weight:700}
+.line .warn{color:#FFB03C}
+.line .dim{color:#2E9E55}
+.line .rev{background:#39FF7A;color:#04140A;padding:0 4px;font-weight:700}
+.rule{border-bottom:1px dashed #2A4A31;margin:10px 0}
+.block{display:inline-block;border:1px solid #2A4A31;padding:2px 8px;margin-right:6px;color:#5FE08A}
+.block.on{background:#39FF7A;color:#04140A;border-color:#39FF7A;font-weight:700}
+
+/* 光标闪烁 */
+.cursor{display:inline-block;width:9px;height:15px;background:#39FF7A;vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* 执行区（终端命令块） */
+.term-exec{border-top:1px solid #2A4A31;padding:12px 16px}
+.exec-title{color:#5FE08A;font-size:12px;margin-bottom:10px;letter-spacing:2px}
+.exec-title::before{content:"# ";color:#FFB03C}
+.rbtns{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.rbtns button{font-family:inherit;font-size:13px;font-weight:700;padding:7px 14px;border:1px solid #2A4A31;background:#0D120D;color:#39FF7A;cursor:pointer}
+.rbtns button:hover{border-color:#39FF7A;color:#7BFFA6}
+.rbtns button.on{background:#39FF7A;color:#04140A;border-color:#39FF7A}
+.rbtns .fail{color:#FF5C5C}.rbtns .fail.on{background:#FF5C5C;color:#140404;border-color:#FF5C5C}
+.rbtns .block{color:#FFB03C;border-color:#3A5A31}.rbtns .block.on{background:#FFB03C;color:#140A04;border-color:#FFB03C}
+.rbtns .na{color:#4E7A5C}.rbtns .na.on{background:#4E7A5C;color:#04140A;border-color:#4E7A5C}
+.rbtns kbd{font-size:10px;opacity:.6;margin-left:4px;font-family:inherit}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fld label{display:block;font-size:11px;color:#2E9E55;margin-bottom:3px}
+.fld input,.fld textarea{width:100%;font-family:inherit;font-size:12px;padding:7px 9px;background:#08110A;border:1px solid #2A4A31;color:#39FF7A;resize:none}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:#39FF7A;box-shadow:0 0 8px rgba(57,255,122,.3)}
+.fld.full{grid-column:1/-1}
+
+/* 底部 */
+.term-nav{border-top:1px solid #2A4A31;padding:9px 16px;display:flex;align-items:center;gap:14px;background:#0D120D}
+.nb-btn{font-family:inherit;font-size:12px;padding:6px 14px;border:1px solid #2A4A31;background:#0D120D;color:#39FF7A;cursor:pointer}
+.nb-btn:hover{background:#39FF7A;color:#04140A}
+.nb-btn kbd{font-size:10px;opacity:.6;margin-left:4px;font-family:inherit}
+.nb-cnt{color:#2E9E55;font-size:12px}
+.nb-cnt b{color:#FFB03C}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>09</b> 复古终端 · CRT 绿字 / 打字机感 <span class="tag">落地成本：高（彩蛋向）</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <div class="term">
+
+    <!-- 终端标题栏 -->
+    <div class="term-bar">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <span class="title">testcase-runner --round=3 --file=IND-1.14.2</span>
+      <span class="right">轮次 <b>3</b> · 已完成 <b id="doneNum">23</b>/45 · 51%</span>
+    </div>
+
+    <!-- 输出区 -->
+    <div class="term-out">
+      <div class="line"><span class="ln">001</span><span class="cmd">$ load IND-1.14.2_industrial_regression.xlsx</span></div>
+      <div class="line"><span class="ln">002</span><span class="ok">[ OK ]</span> <span class="dim">workbook loaded · 5 sheets · 45 cases</span></div>
+      <div class="line"><span class="ln">003</span><span class="cmd">$ case IND-1.14.2-DCRK-001</span></div>
+      <div class="line"><span class="ln">004</span><span class="rev"> 倒车入库 — 目标车位识别与入库 </span></div>
+      <div class="line"><span class="ln">005</span><span class="block">P0</span><span class="block">高风险</span><span class="block">功能</span><span class="block">DCRK</span></div>
+      <div class="line"><span class="ln">006</span><span class="cmd">[前置条件]</span> 机器人电量 ≥ 20% · 车位线清晰 · 调度在线</div>
+      <div class="rule"></div>
+      <div class="line"><span class="ln">007</span><span class="cmd">STEP 1</span> 调度界面下发“倒车入库”任务</div>
+      <div class="line"><span class="ln">008</span><span class="cmd">STEP 2</span> 机器人导航至目标车位前方约 1.5m</div>
+      <div class="line"><span class="ln">009</span><span class="cmd">STEP 3</span> 观察倒车入库全程，记录停位偏差</div>
+      <div class="rule"></div>
+      <div class="line"><span class="ln">010</span><span class="cmd">EXPECT</span> 任务下发成功，状态=执行中</div>
+      <div class="line"><span class="ln">011</span><span class="cmd">EXPECT</span> 停位误差 &lt; 5cm</div>
+      <div class="line"><span class="ln">012</span><span class="cmd">EXPECT</span> 入库完成，上报任务成功</div>
+      <div class="line"><span class="ln">013</span><span class="hl">$ _</span><span class="cursor"></span></div>
+    </div>
+
+    <!-- 执行区 -->
+    <div class="term-exec">
+      <div class="exec-title">标记结果 (1-4)</div>
+      <div class="rbtns">
+        <button class="pass">PASS 通过<kbd>1</kbd></button>
+        <button class="fail">FAIL 失败<kbd>2</kbd></button>
+        <button class="block">BLOCK 阻塞<kbd>3</kbd></button>
+        <button class="na">SKIP 跳过<kbd>4</kbd></button>
+      </div>
+      <div class="fields">
+        <div class="fld full"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象…"></textarea></div>
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷编号" /></div>
+        <div class="fld full"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明…"></textarea></div>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <div class="term-nav">
+      <button class="nb-btn">← 上一条<kbd>←</kbd></button>
+      <span class="nb-cnt">POS <b>23</b> / 45</span>
+      <button class="nb-btn">下一条 →<kbd>→</kbd></button>
+      <span style="flex:1"></span>
+      <span class="nb-cnt">auto-advance: ON · 保存: OK</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rbtns .pass',2:'.rbtns .fail',3:'.rbtns .block',4:'.rbtns .na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

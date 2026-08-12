@@ -13,6 +13,12 @@
     selectedFile: null,      // 初始页选中的文件名
     sessionTester: "",       // 会话测试人员（用于预填）
     fileName: "",
+    library: [],
+    fileFingerprint: null,
+    etag: "",
+    activity: {},
+    runId: "",
+    preflight: null,
     saveTimer: null,
     view: "setup",           // setup | exec | table | detail | preview
     expandedSheets: {},       // 详情页各分组展开状态
@@ -26,6 +32,13 @@
     filter: emptyFilter(),    // 筛选条件（激活后全局工作集收窄）
     filterOpen: false,        // 筛选面板开合状态
     autoAdvance: true,        // 标记通过/跳过后自动跳下一条（可关，跨会话记忆）
+    selectedRows: {},         // 表格批量操作选中的行键
+    undoStack: [],            // 最近结果标记快照
+    compareMode: "all",
+    taskId: "",
+    evidenceKey: "",
+    caseOpenedAt: 0,
+    timings: {},
   };
 
   // 测试结果显示文案与样式
@@ -42,25 +55,46 @@
     "filterStatuses", "filterRefCol", "filterPriorities", "filterModules",
     "filterSheets", "filterRisks", "filterPresets", "filterSaveBtn",
     "filterClearBtn", "filterCount", "filterEmpty",
-    "saveStatus", "progressWrap", "progressFill", "progressText", "loader",
-    "setupView", "stageInput", "testerInput", "uploadBtn", "uploadInput",
-    "fileList", "setupHint", "startBtn",
+    "saveStatus", "progressWrap", "progressFill", "progressDistribution", "progressText", "loader",
+    "setupView", "stageInput", "testerInput", "versionInput", "buildInput",
+    "deviceInput", "environmentInput", "scopeInput", "ownerInput",
+    "uploadBtn", "uploadInput", "fileList", "librarySearch", "setupHint", "startBtn",
     "card", "caseId", "kindTag", "priority", "risk", "moduleTag", "title",
     "scenario", "preconditionSection", "precondition",
     "scenarioSection", "sceneToggle", "sceneArrow", "sceneBody", "sceneDesc", "scenarioImages",
     "stepsSection", "steps", "expectedSection", "expected", "extrasSection",
     "extras", "resultButtons",
-    "actual", "foundTime", "stampBtn", "clearTimeBtn", "bugId", "tester",
-    "note", "prevBtn", "nextBtn", "navCounter", "jumpNext",
+    "actual", "foundTime", "stampBtn", "clearTimeBtn", "bugId", "bugLink", "tester",
+    "note", "evidenceSection", "evidenceInput", "evidenceHint", "evidenceList",
+    "prevBtn", "nextBtn", "navCounter", "jumpNext",
     "viewToggle", "tableToggle", "detailView", "sheetGroups", "detailSummary", "navbar",
-    "tableView", "tableTitle", "tableSummary", "tableWrap",
-    "previewView", "previewBack", "previewTitle", "previewBody",
+    "tableView", "tableTitle", "tableSummary", "tableWrap", "batchBar", "batchSelectAll",
+    "batchCount", "batchPass", "batchNa", "batchClear",
+    "previewView", "previewBack", "previewTitle", "previewBody", "compareView", "compareMode",
+    "compareSummary", "compareBody",
     "readerMask", "readerPanel", "readerCol", "readerRow", "readerBody", "readerClose",
     "lightbox", "lbClose", "lbPrev", "lbNext", "lbImg", "lbCounter",
     "helpBtn", "helpOverlay", "helpClose", "moreBtn", "moreMenu",
     "dashboard", "dashTitle", "dashDonut", "dashPct", "dashStats", "dashFails",
     "clearRoundBtn", "confirmOverlay", "confirmDesc", "confirmCancel", "confirmOk",
     "autoAdvanceToggle",
+    "backupBtn", "backupModal", "backupHint", "backupList", "backupClose",
+    "retryPendingBtn",
+    "compareBtn", "reportBtn", "taskBtn", "settingsBtn",
+    "reportModal", "reportClose", "reportStats", "reportBody", "reportCopy", "reportDownload",
+    "reportHtml",
+    "taskModal", "taskClose", "taskHint", "taskList",
+    "settingsModal", "settingsClose", "settingsCancel", "settingsSave", "bugUrlInput", "darkModeToggle",
+    "commandModal", "commandClose", "commandInput", "commandList",
+    "preflightModal", "preflightSummary", "preflightSheets", "preflightWarnings",
+    "preflightChanges", "preflightCancel", "preflightOk",
+    "exportSubtaskBtn", "importResultsBtn",
+    "subtaskExportModal", "subtaskExportDesc", "subtaskExportSheets",
+    "subtaskTesterInput", "subtaskDueInput", "subtaskTaskNote", "subtaskExportHint", "subtaskExportCancel", "subtaskExportOk",
+    "subtaskImportModal", "subtaskImportBody", "subtaskFileInput", "subtaskUploadBtn",
+    "subtaskImportHint", "subtaskPreview", "subtaskStats", "subtaskDiffBody",
+    "subtaskOnlyEmptyBtn", "subtaskSelectAllBtn", "subtaskSelectNoneBtn",
+    "subtaskMergeCancel", "subtaskMergeOk", "subtaskMergeResult",
   ];
 
   function $(id) { return document.getElementById(id); }
@@ -68,6 +102,7 @@
   function init() {
     IDS.forEach(function (id) { el[id] = $(id); });
     loadAutoAdvancePref();
+    loadTheme();
     bindEvents();
     loadInitial();
   }
@@ -83,14 +118,28 @@
 
   function fetchJSON(url, opts) {
     return fetch(url, opts).then(function (r) {
-      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      if (r.status === 304) return { ok: true, notModified: true, d: {}, headers: r.headers };
+      return r.json().then(function (d) { return { ok: r.ok, d: d, headers: r.headers }; });
+    });
+  }
+
+  function fetchCases() {
+    var opts = { headers: {} };
+    if (state.etag) opts.headers["If-None-Match"] = state.etag;
+    return fetchJSON("/api/cases", opts).then(function (res) {
+      if (res.headers) {
+        var tag = res.headers.get("ETag");
+        if (tag) state.etag = tag;
+      }
+      return res;
     });
   }
 
   /* ---------- 启动 ---------- */
   function loadInitial() {
-    fetchJSON("/api/cases")
+    fetchCases()
       .then(function (res) {
+        if (res.notModified && state.cases.length) { enterAfterLoad(); return; }
         if (!res.ok) { showError(res.d.error || "加载失败"); return; }
         if (res.d.needsSetup) {
           state.files = res.d.files || [];
@@ -118,6 +167,10 @@
     state.previews.forEach(function (p) { state.previewMap[p.sheet] = p; });
     state.sessionTester = d.tester || "";
     state.fileName = d.fileName || "";
+    state.fileFingerprint = d.fileFingerprint || null;
+    state.activity = d.activity || {};
+    state.runId = d.runId || "";
+    state.preflight = null;
     state.resultColumns = d.resultColumns || {};
     state.selectedRound = "";   // 换文件后重置，renderRoundSelect 取默认首列
     state.filter = emptyFilter();  // 换文件后筛选清空
@@ -131,10 +184,64 @@
     var parts = [];
     if (d.stage) parts.push("阶段: " + d.stage);
     if (d.tester) parts.push("测试人员: " + d.tester);
+    if (state.activity.version) parts.push("版本: " + state.activity.version);
+    if (state.activity.device) parts.push("设备: " + state.activity.device);
     el.sessionInfo.textContent = parts.join("  ·  ");
     buildSheetFilter();
     renderRoundSelect();
     renderFilterPanel();
+    restorePendingDrafts();
+    restoreCheckpoint();
+  }
+
+  var CHECKPOINT_PREFIX = "tcreader.checkpoint:";
+  function checkpointKey() {
+    return CHECKPOINT_PREFIX + encodeURIComponent(state.fileName || "");
+  }
+  function saveCheckpoint() {
+    if (!state.fileName || !state.fileFingerprint) return;
+    var data = {
+      fileFingerprint: state.fileFingerprint,
+      selectedRound: state.selectedRound || "",
+      filter: JSON.parse(JSON.stringify(state.filter || emptyFilter())),
+      index: state.index,
+      savedAt: Date.now(),
+    };
+    try { localStorage.setItem(checkpointKey(), JSON.stringify(data)); } catch (e) {}
+  }
+  function restoreCheckpoint() {
+    if (!state.fileName || !state.fileFingerprint) return;
+    var data = null;
+    try { data = JSON.parse(localStorage.getItem(checkpointKey()) || "null"); } catch (e) { data = null; }
+    if (!data || !data.fileFingerprint) return;
+    var currentHash = state.fileFingerprint.sha256 || "";
+    var savedHash = data.fileFingerprint.sha256 || "";
+    if (!currentHash || currentHash !== savedHash) {
+      setSaveStatus("文件已变化，未恢复上次断点", "error");
+      return;
+    }
+    var savedIndex = Number(data.index);
+    var hasPosition = Number.isFinite(savedIndex) && savedIndex > 0;
+    var savedFilter = data.filter || {};
+    var hasFilter = !!(savedFilter.keyword || savedFilter.idFrom || savedFilter.idTo ||
+      (savedFilter.statuses || []).length || (savedFilter.priorities || []).length ||
+      (savedFilter.modules || []).length || (savedFilter.sheets || []).length || (savedFilter.risks || []).length);
+    if (!hasPosition && !hasFilter && !data.selectedRound) return;
+    if (!window.confirm("检测到上次未结束的执行进度，是否继续？")) return;
+    if (data.selectedRound && roundOptions().indexOf(data.selectedRound) >= 0) {
+      state.selectedRound = data.selectedRound;
+      renderRoundSelect();
+    }
+    var base = emptyFilter();
+    Object.keys(base).forEach(function (key) {
+      if (Array.isArray(base[key])) base[key] = Array.isArray(savedFilter[key]) ? savedFilter[key].slice() : [];
+      else base[key] = String(savedFilter[key] || "");
+    });
+    state.filter = base;
+    invalidateFilter();
+    renderFilterPanel();
+    state.index = Math.max(0, Math.min(state.cases.length - 1, savedIndex || 0));
+    setSaveStatus("已恢复上次执行进度", "ok");
   }
 
   // 载入后决定进入哪个视图：有可执行用例进执行页，否则若有预览进详情页
@@ -147,9 +254,13 @@
   /* ---------- 初始配置页 ---------- */
   // 测试阶段/测试人员跨会话记忆（localStorage，后端会话缺失时回填）
   var SESSION_PREF_KEY = "tcreader.sessionPrefs";
-  function saveSessionPrefs(stage, tester) {
+  function saveSessionPrefs(stage, tester, context) {
     try {
-      localStorage.setItem(SESSION_PREF_KEY, JSON.stringify({ stage: stage || "", tester: tester || "" }));
+      var value = { stage: stage || "", tester: tester || "" };
+      ["version", "build", "device", "environment", "scope", "owner"].forEach(function (key) {
+        value[key] = context && context[key] ? context[key] : "";
+      });
+      localStorage.setItem(SESSION_PREF_KEY, JSON.stringify(value));
     } catch (e) { /* 隐私模式等场景静默降级 */ }
   }
   function loadSessionPrefs() {
@@ -171,6 +282,10 @@
       var prefs = loadSessionPrefs();
       if (!el.stageInput.value && prefs.stage) el.stageInput.value = prefs.stage;
       if (!el.testerInput.value && prefs.tester) el.testerInput.value = prefs.tester;
+      ["version", "build", "device", "environment", "scope", "owner"].forEach(function (key) {
+        var input = el[key + "Input"];
+        if (input && !input.value && prefs[key]) input.value = prefs[key];
+      });
       // 默认选中当前文件或最新的一个
       if (state.files.length) {
         var cur = res.ok ? res.d.current : null;
@@ -180,7 +295,18 @@
       }
       renderFileList();
       showView("setup");
+      refreshLibrary();
     });
+  }
+
+  function refreshLibrary() {
+    fetchJSON("/api/library").then(function (res) {
+      if (!res.ok) return;
+      state.library = res.d.files || [];
+      state.files = state.library.filter(function (item) { return !item.archived; });
+      if (state.selectedFile && !findFile(state.selectedFile)) state.selectedFile = state.files.length ? state.files[0].name : null;
+      renderFileList();
+    }).catch(function () {});
   }
 
   function findFile(name) {
@@ -190,16 +316,19 @@
 
   function renderFileList() {
     el.fileList.innerHTML = "";
-    if (!state.files.length) {
+    var query = el.librarySearch ? el.librarySearch.value.trim().toLowerCase() : "";
+    var items = (state.library.length ? state.library : state.files).filter(function (item) {
+      return !query || item.name.toLowerCase().indexOf(query) >= 0;
+    });
+    if (!items.length) {
       el.setupHint.textContent = "暂无用例文件，请点击上方按钮上传 .xlsx 文件。";
       el.setupHint.className = "setup-hint warn";
       el.startBtn.disabled = true;
       return;
     }
-    state.files.forEach(function (f) {
-      var row = document.createElement("button");
-      row.type = "button";
-      row.className = "file-item" + (f.name === state.selectedFile ? " selected" : "");
+    items.forEach(function (f) {
+      var row = document.createElement("div");
+      row.className = "file-item" + (f.name === state.selectedFile && !f.archived ? " selected" : "") + (f.archived ? " archived" : "");
       var nameSpan = document.createElement("span");
       nameSpan.className = "file-item-name";
       nameSpan.textContent = f.name;
@@ -208,15 +337,51 @@
       meta.textContent = formatSize(f.size) + " · " + formatTime(f.mtime);
       row.appendChild(nameSpan);
       row.appendChild(meta);
-      row.addEventListener("click", function () {
-        state.selectedFile = f.name;
-        renderFileList();
+      if (!f.archived) {
+        row.addEventListener("click", function () { state.selectedFile = f.name; renderFileList(); });
+      }
+      var actions = document.createElement("span");
+      actions.className = "file-item-actions";
+      [
+        { label: "重命名", action: function () {
+          var nextName = window.prompt("新的文件名：", f.name);
+          if (nextName && nextName.trim() !== f.name) libraryPatch({ fileName: f.name, newName: nextName.trim(), archived: !!f.archived });
+        } },
+        { label: f.archived ? "恢复" : "归档", action: function () {
+          libraryPatch({ fileName: f.name, archived: !!f.archived, archive: !f.archived });
+        } },
+        { label: "删除", action: function () {
+          if (window.confirm("文件将移入回收区，确认删除吗？")) libraryDelete(f);
+        } },
+      ].forEach(function (item) {
+        var button = document.createElement("button");
+        button.className = "btn btn-small " + (item.label === "删除" ? "btn-danger" : "btn-ghost");
+        button.textContent = item.label;
+        button.addEventListener("click", function (event) { event.stopPropagation(); item.action(); });
+        actions.appendChild(button);
       });
+      row.appendChild(actions);
       el.fileList.appendChild(row);
     });
     el.setupHint.textContent = state.selectedFile ? ("已选择：" + state.selectedFile) : "请选择一个用例文件。";
     el.setupHint.className = "setup-hint";
     el.startBtn.disabled = !state.selectedFile;
+  }
+
+  function libraryPatch(payload) {
+    fetchJSON("/api/library", { method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload) }).then(function (res) {
+      if (!res.ok) { el.setupHint.textContent = res.d.error || "文件操作失败"; el.setupHint.className = "setup-hint warn"; return; }
+      refreshLibrary();
+    }).catch(function () { el.setupHint.textContent = "文件操作失败"; el.setupHint.className = "setup-hint warn"; });
+  }
+  function libraryDelete(item) {
+    fetchJSON("/api/library/" + encodeURIComponent(item.name) + "?archived=" + (item.archived ? "1" : "0"), { method: "DELETE" })
+      .then(function (res) {
+        if (!res.ok) { el.setupHint.textContent = res.d.error || "文件删除失败"; el.setupHint.className = "setup-hint warn"; return; }
+        if (state.selectedFile === item.name) state.selectedFile = null;
+        refreshLibrary();
+      }).catch(function () { el.setupHint.textContent = "文件删除失败"; el.setupHint.className = "setup-hint warn"; });
   }
 
   function formatSize(n) {
@@ -256,7 +421,9 @@
         if (!res.ok) { el.setupHint.textContent = res.d.error || "上传失败"; el.setupHint.className = "setup-hint warn"; return; }
         state.files = res.d.files || [];
         state.selectedFile = res.d.uploaded || (state.files[0] && state.files[0].name);
+        state.library = state.files.slice();
         renderFileList();
+        refreshLibrary();
         if (res.d.converted) {
           el.setupHint.textContent = res.d.hint || "已自动转换为 xlsx，原件已备份";
           el.setupHint.className = "setup-hint ok";
@@ -269,31 +436,173 @@
   function startTest() {
     if (!state.selectedFile) { el.setupHint.textContent = "请先选择用例文件"; el.setupHint.className = "setup-hint warn"; return; }
     el.startBtn.disabled = true;
-    el.setupHint.textContent = "正在加载用例…";
+    el.setupHint.textContent = "正在执行解析预检…";
     el.setupHint.className = "setup-hint";
-    var payload = {
-      fileName: state.selectedFile,
-      stage: el.stageInput.value.trim(),
-      tester: el.testerInput.value.trim(),
-    };
-    saveSessionPrefs(payload.stage, payload.tester); // 跨会话记忆（localStorage）
+    var payload = collectActivity();
+    payload.fileName = state.selectedFile;
+    saveSessionPrefs(payload.stage, payload.tester, payload); // 跨会话记忆（localStorage）
+    fetchJSON("/api/workbook/preflight", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: state.selectedFile }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          el.startBtn.disabled = false;
+          el.setupHint.textContent = res.d.error || "预检失败";
+          el.setupHint.className = "setup-hint warn";
+          return;
+        }
+        state.preflight = res.d;
+        renderPreflight(res.d);
+        el.preflightModal.classList.remove("hidden");
+      })
+      .catch(function (e) {
+        el.startBtn.disabled = false;
+        el.setupHint.textContent = "网络错误: " + e.message;
+        el.setupHint.className = "setup-hint warn";
+      });
+  }
+
+  function collectActivity() {
+    var data = {};
+    ["stage", "tester", "version", "build", "device", "environment", "scope", "owner"].forEach(function (key) {
+      var input = el[key + "Input"];
+      data[key] = input ? input.value.trim() : "";
+    });
+    return data;
+  }
+
+  function renderPreflight(d) {
+    el.preflightSummary.textContent = d.fileName + " · " + formatSize(d.fileSize) +
+      " · " + d.sheetCount + " 个 Sheet · " + d.executableCaseCount + " 条可执行用例";
+    el.preflightSheets.innerHTML = "";
+    (d.sheets || []).forEach(function (sheet) {
+      var row = document.createElement("div");
+      row.className = "preflight-sheet";
+      var mapped = (sheet.fieldMappings || []).filter(function (m) { return m.status === "matched"; }).length;
+      row.textContent = sheet.name + " · " + (KIND_LABEL[sheet.kind] || sheet.kind) +
+        " · " + (sheet.caseCount || 0) + " 条用例 · 已识别 " + mapped + " 个字段";
+      el.preflightSheets.appendChild(row);
+    });
+    el.preflightWarnings.innerHTML = "";
+    (d.warnings || []).forEach(function (warning) {
+      var row = document.createElement("div");
+      row.className = "preflight-warning " + (warning.level || "info");
+      row.textContent = warning.message;
+      el.preflightWarnings.appendChild(row);
+    });
+    if (!d.warnings || !d.warnings.length) el.preflightWarnings.textContent = "未发现解析风险";
+    el.preflightChanges.innerHTML = "";
+    if ((d.changes || []).length) {
+      var title = document.createElement("strong");
+      title.textContent = "确认后将写入：";
+      el.preflightChanges.appendChild(title);
+      (d.changes || []).forEach(function (change) {
+        var row = document.createElement("div");
+        row.textContent = change.sheet + " · 新增列「" + change.header + "」";
+        el.preflightChanges.appendChild(row);
+      });
+    } else {
+      el.preflightChanges.textContent = "不会新增表头列";
+    }
+    el.preflightOk.disabled = (d.executableCaseCount || 0) === 0;
+  }
+
+  function closePreflight() {
+    el.preflightModal.classList.add("hidden");
+    state.preflight = null;
+    el.startBtn.disabled = false;
+  }
+
+  function confirmPreflight() {
+    if (!state.preflight) return;
+    el.preflightOk.disabled = true;
+    el.setupHint.textContent = "正在加载用例…";
+    var payload = collectActivity();
+    payload.fileName = state.selectedFile;
+    payload.fileFingerprint = state.preflight.fingerprint;
     fetchJSON("/api/select", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    })
+    }).then(function (res) {
+      if (!res.ok) {
+        el.preflightOk.disabled = false;
+        el.setupHint.textContent = res.d.error || "加载失败";
+        el.setupHint.className = "setup-hint warn";
+        return;
+      }
+      closePreflight();
+      el.startBtn.disabled = false;
+      applyPayload(res.d);
+      enterAfterLoad();
+    }).catch(function (e) {
+      el.preflightOk.disabled = false;
+      el.setupHint.textContent = "网络错误: " + e.message;
+      el.setupHint.className = "setup-hint warn";
+    });
+  }
+
+  /* ---------- 备份恢复中心 ---------- */
+  function openBackups() {
+    el.backupModal.classList.remove("hidden");
+    el.backupHint.textContent = "正在读取当前文件的备份…";
+    el.backupList.innerHTML = "";
+    fetchJSON("/api/backups?fileName=" + encodeURIComponent(state.fileName || ""))
       .then(function (res) {
-        el.startBtn.disabled = false;
-        if (!res.ok) { el.setupHint.textContent = res.d.error || "加载失败"; el.setupHint.className = "setup-hint warn"; return; }
-        applyPayload(res.d);
-        enterAfterLoad();
-      })
-      .catch(function (e) { el.startBtn.disabled = false; el.setupHint.textContent = "网络错误: " + e.message; el.setupHint.className = "setup-hint warn"; });
+        if (!res.ok) {
+          el.backupHint.textContent = res.d.error || "读取备份失败";
+          return;
+        }
+        var list = res.d.backups || [];
+        el.backupHint.textContent = list.length ?
+          ("共 " + list.length + " 个备份，恢复前会自动备份当前文件") : "当前文件暂无可恢复备份";
+        list.forEach(function (backup) {
+          var row = document.createElement("div");
+          row.className = "backup-item";
+          var info = document.createElement("div");
+          info.className = "backup-info";
+          var name = document.createElement("strong");
+          name.textContent = backup.createdAt || backup.name;
+          var meta = document.createElement("span");
+          meta.textContent = formatSize(backup.size) + " · " + backup.name;
+          info.appendChild(name);
+          info.appendChild(meta);
+          var button = document.createElement("button");
+          button.className = "btn btn-small btn-danger";
+          button.textContent = "恢复";
+          button.title = "恢复前会自动备份当前文件";
+          button.addEventListener("click", function () { restoreBackup(backup); });
+          row.appendChild(info);
+          row.appendChild(button);
+          el.backupList.appendChild(row);
+        });
+      }).catch(function () { el.backupHint.textContent = "网络错误，无法读取备份"; });
+  }
+
+  function closeBackups() { el.backupModal.classList.add("hidden"); }
+
+  function restoreBackup(backup) {
+    if (!window.confirm("确定恢复 " + (backup.createdAt || backup.name) + "？当前文件会先自动备份。")) return;
+    el.backupHint.textContent = "正在恢复…";
+    fetchJSON("/api/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backupId: backup.id, fileName: state.fileName,
+                             fileFingerprint: state.fileFingerprint }),
+    }).then(function (res) {
+      if (!res.ok) { el.backupHint.textContent = res.d.error || "恢复失败"; return; }
+      closeBackups();
+      applyPayload(res.d.payload);
+      enterAfterLoad();
+      setSaveStatus("已恢复备份 ✓", "ok");
+    }).catch(function () { el.backupHint.textContent = "网络错误，恢复失败"; });
   }
 
   /* ---------- 视图切换 ---------- */
   function hideAllViews() {
-    ["setupView", "card", "tableView", "detailView", "previewView"].forEach(function (k) { el[k].classList.add("hidden"); });
+    ["setupView", "card", "tableView", "detailView", "previewView", "compareView"].forEach(function (k) { el[k].classList.add("hidden"); });
     el.loader.classList.add("hidden");
     el.filterEmpty.classList.add("hidden");
     closeResultMenu();
@@ -307,12 +616,14 @@
     var isTable = view === "table";
     var isDetail = view === "detail";
     var isPreview = view === "preview";
+    var isCompare = view === "compare";
 
     el.setupView.classList.toggle("hidden", !isSetup);
     el.card.classList.toggle("hidden", !isExec);
     el.tableView.classList.toggle("hidden", !isTable);
     el.detailView.classList.toggle("hidden", !isDetail);
     el.previewView.classList.toggle("hidden", !isPreview);
+    el.compareView.classList.toggle("hidden", !isCompare);
 
     // 宽屏布局：初始页保持窄幅居中，其余视图充分利用大屏宽度
     document.body.classList.toggle("wide-view", !isSetup);
@@ -322,8 +633,8 @@
     el.progressWrap.classList.toggle("hidden", isSetup);
     el.navbar.classList.toggle("hidden", !isExec);
 
-    el.viewToggle.textContent = (isDetail || isPreview) ? "返回执行" : "测试详情";
-    el.viewToggle.classList.toggle("active", isDetail || isPreview);
+    el.viewToggle.textContent = (isDetail || isPreview || isCompare) ? "返回执行" : "测试详情";
+    el.viewToggle.classList.toggle("active", isDetail || isPreview || isCompare);
     // 表格/卡片切换仅在执行类视图可用
     el.tableToggle.classList.toggle("hidden", !isExec && !isTable);
     el.tableToggle.textContent = isTable ? "卡片视图" : "表格视图";
@@ -347,6 +658,10 @@
         state.detailInited = true;
       }
       renderDetail();
+    }
+    else if (isCompare) {
+      flushSave();
+      renderCompare();
     }
   }
 
@@ -401,10 +716,17 @@
     el.foundTime.value = c.foundTime || "";
     state.foundTimeOriginal = el.foundTime.value; // 记录基准值用于修改确认
     el.bugId.value = c.bugId || "";
+    updateBugLink(c.bugId);
     el.bugId.classList.remove("attn"); // 切换用例时撤去失败登记高亮
     // 测试人员：为空时用会话测试人员预填（可修改）
     el.tester.value = c.tester || state.sessionTester || "";
     el.note.value = c.note || "";
+    var caseKey = c.sheet + ":" + c.rowIndex;
+    if (state.evidenceKey !== caseKey) {
+      state.evidenceKey = caseKey;
+      state.caseOpenedAt = Date.now();
+      loadEvidence(c);
+    }
 
     // 导航状态（筛选激活时在可见工作集内计数与禁用）
     var vis = visibleIndices();
@@ -424,7 +746,70 @@
     el.sheetFilter.value = c.sheet;
     updateRoundWarn();
     updateProgress();
+    saveCheckpoint();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  var BUG_URL_KEY = "tcreader.bugUrlTemplate";
+  function bugUrlTemplate() {
+    try { return localStorage.getItem(BUG_URL_KEY) || ""; } catch (e) { return ""; }
+  }
+  function updateBugLink(value) {
+    var id = String(value || "").trim();
+    var template = bugUrlTemplate();
+    if (!el.bugLink) return;
+    if (!id || !template || template.indexOf("{id}") < 0) {
+      el.bugLink.classList.add("hidden");
+      el.bugLink.removeAttribute("href");
+      el.bugLink.textContent = "";
+      return;
+    }
+    el.bugLink.href = template.split("{id}").join(encodeURIComponent(id));
+    el.bugLink.textContent = "打开缺陷";
+    el.bugLink.classList.remove("hidden");
+  }
+
+  function renderEvidence(items) {
+    if (!el.evidenceList) return;
+    el.evidenceList.innerHTML = "";
+    if (!items || !items.length) {
+      el.evidenceHint.textContent = "支持截图、日志和其他附件";
+      return;
+    }
+    el.evidenceHint.textContent = items.length + " 个证据文件";
+    items.forEach(function (item) {
+      var link = document.createElement("a");
+      link.className = "evidence-item";
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = item.name + " · " + formatSize(item.size);
+      el.evidenceList.appendChild(link);
+    });
+  }
+
+  function loadEvidence(c) {
+    if (!c || !el.evidenceList) return;
+    fetchJSON("/api/attachments?sheet=" + encodeURIComponent(c.sheet) + "&rowIndex=" + c.rowIndex)
+      .then(function (res) { if (res.ok) renderEvidence(res.d.attachments || []); })
+      .catch(function () { renderEvidence([]); });
+  }
+
+  function uploadEvidence(file) {
+    var c = state.cases[state.index];
+    if (!file || !c) return;
+    var fd = new FormData();
+    fd.append("file", file);
+    fd.append("sheet", c.sheet);
+    fd.append("rowIndex", String(c.rowIndex));
+    fd.append("fileName", state.fileName || "");
+    fd.append("fileFingerprint", JSON.stringify(state.fileFingerprint || {}));
+    el.evidenceHint.textContent = "正在上传证据…";
+    fetchJSON("/api/attachments", { method: "POST", body: fd })
+      .then(function (res) {
+        if (!res.ok) { el.evidenceHint.textContent = res.d.error || "证据上传失败"; return; }
+        loadEvidence(c);
+      }).catch(function () { el.evidenceHint.textContent = "网络错误，证据上传失败"; });
   }
 
   // 场景说明结构化渲染：连续编号行归为有序列表，其余按段落展示（不改写原文）
@@ -635,6 +1020,67 @@
     if (state.filter.statuses.length) invalidateFilter();
   }
 
+  function snapshotCase(c) {
+    var fields = {
+      result: caseResult(c) || "",
+      actual: c.actual || "",
+      foundTime: c.foundTime || "",
+      bugId: c.bugId || "",
+      tester: c.tester || "",
+      note: c.note || "",
+    };
+    if (c === state.cases[state.index] && el.resultButtons) {
+      var current = collectFields();
+      fields = current;
+    }
+    return {
+      sheet: c.sheet,
+      rowIndex: c.rowIndex,
+      resultColumn: effectiveColFor(c.sheet).name || "",
+      fields: fields,
+      createdAt: Date.now(),
+    };
+  }
+  function pushUndoSnapshot(c) {
+    if (!c) return;
+    state.undoStack.push(snapshotCase(c));
+    if (state.undoStack.length > 20) state.undoStack.shift();
+  }
+  function findCase(sheet, rowIndex) {
+    return state.cases.find(function (candidate) {
+      return candidate.sheet === sheet && candidate.rowIndex === rowIndex;
+    });
+  }
+  function applySnapshot(snapshot) {
+    var c = findCase(snapshot.sheet, snapshot.rowIndex);
+    if (!c) return null;
+    var fields = snapshot.fields || {};
+    setCaseResult(c, fields.result || "");
+    ["actual", "foundTime", "bugId", "tester", "note"].forEach(function (key) {
+      c[key] = fields[key] || "";
+    });
+    return c;
+  }
+  function undoLast() {
+    if (!state.undoStack.length) {
+      setSaveStatus("没有可撤销的结果标记", "ok");
+      return;
+    }
+    if (state.saveTimer) { clearTimeout(state.saveTimer); state.saveTimer = null; }
+    var snapshot = state.undoStack.pop();
+    var c = applySnapshot(snapshot);
+    if (!c) return;
+    if (c === state.cases[state.index] && state.view === "exec") render();
+    else if (state.view === "table") renderTable();
+    else updateProgress();
+    var eff = effectiveColFor(c.sheet);
+    patchCase({ sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name,
+      result: snapshot.fields.result || "", resultColumn: eff.name || undefined,
+      actual: snapshot.fields.actual || "", foundTime: snapshot.fields.foundTime || "",
+      bugId: snapshot.fields.bugId || "", tester: snapshot.fields.tester || "",
+      note: snapshot.fields.note || "" });
+  }
+
   // 渲染顶栏轮次选择器：并集选项 + 默认首列 + 缺失警示
   function renderRoundSelect() {
     if (!el.roundSelect) return;
@@ -683,7 +1129,31 @@
     el.progressFill.style.width = pct + "%";
     el.progressText.textContent = "已完成 " + p.done + " / " + p.total + " (" + pct + "%)" +
       (filterActive() ? "（筛选）" : "");
+    renderProgressDistribution();
     updateFilterBar();
+  }
+
+  function renderProgressDistribution() {
+    if (!el.progressDistribution) return;
+    var counts = { PASS: 0, FAIL: 0, BLOCK: 0, NA: 0, UNTESTED: 0 };
+    visibleIndices().forEach(function (i) {
+      var norm = normalizeResult(caseResult(state.cases[i]));
+      counts[norm || "UNTESTED"]++;
+    });
+    var total = visibleIndices().length || 1;
+    el.progressDistribution.innerHTML = "";
+    [["PASS", "通过", "var(--pass)"], ["FAIL", "失败", "var(--fail)"],
+     ["BLOCK", "阻塞", "var(--block)"], ["NA", "跳过", "var(--na)"],
+     ["UNTESTED", "未测", "#e7ebf3"]].forEach(function (item) {
+      var n = counts[item[0]];
+      if (!n) return;
+      var part = document.createElement("span");
+      part.className = "progress-segment";
+      part.style.width = (n / total * 100) + "%";
+      part.style.background = item[2];
+      part.title = item[1] + " " + n;
+      el.progressDistribution.appendChild(part);
+    });
   }
 
   /* ---------- 用例筛选（筛选工作集模式，纯前端） ---------- */
@@ -1153,6 +1623,56 @@
   }
 
   /* ---------- 表格视图（当前 Sheet 用例总览） ---------- */
+  function rowKey(c) { return c.sheet + ":" + c.rowIndex; }
+  function updateBatchBar(items) {
+    if (!el.batchBar || state.view !== "table") return;
+    var selected = items ? items.filter(function (it) { return !!state.selectedRows[rowKey(it.c)]; }) : [];
+    el.batchBar.classList.toggle("hidden", !items || !items.length);
+    el.batchCount.textContent = selected.length ? ("已选 " + selected.length + " 条") : "未选择用例";
+    el.batchPass.disabled = !selected.length;
+    el.batchNa.disabled = !selected.length;
+    el.batchSelectAll.checked = !!items && items.length > 0 && selected.length === items.length;
+    el.batchSelectAll.indeterminate = !!selected.length && selected.length < (items ? items.length : 0);
+  }
+  function selectedTableItems() {
+    var cur = state.cases[state.index];
+    if (!cur) return [];
+    var result = [];
+    visibleIndices().forEach(function (index) {
+      var c = state.cases[index];
+      if (c.sheet === cur.sheet && state.selectedRows[rowKey(c)]) result.push({ c: c, index: index });
+    });
+    return result;
+  }
+  function batchMark(result) {
+    if (["PASS", "NA"].indexOf(result) < 0) return;
+    var items = selectedTableItems();
+    if (!items.length) return;
+    if (!window.confirm("将把选中的 " + items.length + " 条用例标记为“" + (RESULT_LABEL[result] || result) + "”，是否继续？")) return;
+    setSaveStatus("正在批量保存…", "saving");
+    var failed = 0;
+    function next(pos) {
+      if (pos >= items.length) {
+        items.forEach(function (it) { delete state.selectedRows[rowKey(it.c)]; });
+        renderTable();
+        setSaveStatus(failed ? ("批量完成，" + failed + " 条待重试") : "批量保存完成 ✓", failed ? "error" : "ok");
+        return;
+      }
+      var c = items[pos].c;
+      var previous = snapshotCase(c);
+      pushUndoSnapshot(c);
+      setCaseResult(c, result);
+      patchCase({ sheet: c.sheet, rowIndex: c.rowIndex, expectedName: c.name,
+        result: result, resultColumn: effectiveColFor(c.sheet).name || undefined }, function () {
+        next(pos + 1);
+      }, function () {
+        applySnapshot(previous);
+        failed++;
+        next(pos + 1);
+      });
+    }
+    next(0);
+  }
   function renderTable() {
     var cur = state.cases[state.index];
     if (!cur) return;
@@ -1177,6 +1697,10 @@
     table.className = "case-table";
     var thead = document.createElement("thead");
     var htr = document.createElement("tr");
+    var selectTh = document.createElement("th");
+    selectTh.className = "ct-select";
+    selectTh.textContent = "选择";
+    htr.appendChild(selectTh);
     // 结果列表头显示当前有效写入列名（轮次工作模式）
     var effName = effectiveColFor(sheet).name || "测试结果";
     ["编号", "标题 / 场景", "模块", "优先级", effName, "备注"].forEach(function (h) {
@@ -1199,6 +1723,20 @@
       var tr = document.createElement("tr");
       if (it.index === state.index) tr.className = "current";
       if (!normalizeResult(caseResult(c))) tr.classList.add("untested");
+
+      var tdSelect = document.createElement("td");
+      tdSelect.className = "ct-select";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !!state.selectedRows[rowKey(c)];
+      checkbox.setAttribute("aria-label", "选择 " + (c.name || c.title || "用例"));
+      checkbox.addEventListener("change", function () {
+        if (checkbox.checked) state.selectedRows[rowKey(c)] = true;
+        else delete state.selectedRows[rowKey(c)];
+        updateBatchBar(items);
+      });
+      tdSelect.appendChild(checkbox);
+      tr.appendChild(tdSelect);
 
       var tdId = document.createElement("td");
       tdId.className = "ct-id";
@@ -1272,6 +1810,9 @@
     table.appendChild(tbody);
     el.tableWrap.appendChild(table);
 
+    updateBatchBar(items);
+    saveCheckpoint();
+
     el.sheetFilter.value = sheet;
     updateRoundWarn();
     updateProgress();
@@ -1283,6 +1824,7 @@
     if (!c) return;
     var eff = effectiveColFor(c.sheet);
     var prev = caseResult(c);
+    pushUndoSnapshot(c);
     setCaseResult(c, result);
     applyPillState(pillEl, result);
     rowEl.classList.toggle("untested", !normalizeResult(result));
@@ -1308,29 +1850,171 @@
       });
   }
 
-  // 通用 PATCH 写回：成功后刷新进度，失败回调 onFail 回滚
+  /* ---------- 本机待提交草稿（仅保存最小字段，7 天自动清理） ---------- */
+  var PENDING_KEY = "tcreader.pendingChanges";
+  var PENDING_TTL = 7 * 24 * 3600 * 1000;
+  function loadPending() {
+    var now = Date.now();
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem(PENDING_KEY)) || []; } catch (e) { list = []; }
+    list = list.filter(function (item) { return item.createdAt && now - item.createdAt < PENDING_TTL; });
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch (e2) {}
+    return list;
+  }
+  function pendingId(item) {
+    return [item.fileName, item.sheet, item.rowIndex,
+      item.resultColumn || item.resultCol || ""].join("|");
+  }
+  function queuePending(payload, error) {
+    var list = loadPending();
+    var item = {
+      fileName: payload.fileName || state.fileName,
+      fileFingerprint: payload.fileFingerprint || state.fileFingerprint,
+      sheet: payload.sheet,
+      rowIndex: payload.rowIndex,
+      expectedName: payload.expectedName || "",
+      resultColumn: payload.resultColumn || "",
+      resultCol: payload.resultCol || null,
+      fields: {},
+      createdAt: Date.now(),
+      retryCount: 0,
+      lastError: error || "保存失败",
+    };
+    ["result", "bugId", "tester", "note", "actual", "foundTime"].forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) item.fields[key] = payload[key];
+    });
+    var id = pendingId(item);
+    var found = false;
+    list = list.map(function (old) {
+      if (pendingId(old) !== id) return old;
+      found = true;
+      item.retryCount = (old.retryCount || 0) + 1;
+      return item;
+    });
+    if (!found) list.push(item);
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch (e) {}
+    return list.length;
+  }
+  function removePending(payload) {
+    var list = loadPending();
+    var id = pendingId({ fileName: state.fileName, sheet: payload.sheet,
+      rowIndex: payload.rowIndex, resultColumn: payload.resultColumn,
+      resultCol: payload.resultCol });
+    list = list.filter(function (item) { return pendingId(item) !== id; });
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  function restorePendingDrafts() {
+    if (!state.fileName || !state.fileFingerprint) return;
+    var list = loadPending().filter(function (item) {
+      return item.fileName === state.fileName && item.fileFingerprint &&
+        item.fileFingerprint.sha256 === state.fileFingerprint.sha256;
+    });
+    list.forEach(function (item) {
+      var c = state.cases.find(function (candidate) {
+        return candidate.sheet === item.sheet && candidate.rowIndex === item.rowIndex;
+      });
+      if (!c) return;
+      var fields = item.fields || {};
+      if (Object.prototype.hasOwnProperty.call(fields, "result")) {
+        if (item.resultColumn && c.results) c.results[item.resultColumn] = fields.result;
+        else c.result = fields.result;
+      }
+      ["bugId", "tester", "note", "actual", "foundTime"].forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(fields, key)) c[key] = fields[key];
+      });
+    });
+    if (list.length) setSaveStatus("有 " + list.length + " 项待重试", "error");
+  }
+  function pendingForCurrent() {
+    return loadPending().filter(function (item) {
+      return item.fileName === state.fileName;
+    });
+  }
+  function retryPending() {
+    var list = pendingForCurrent();
+    if (!list.length) { setSaveStatus("没有待提交草稿", "ok"); return; }
+    setSaveStatus("正在重试 " + list.length + " 项…", "saving");
+    function next(pos) {
+      if (pos >= list.length) {
+        var remain = pendingForCurrent().length;
+        setSaveStatus(remain ? ("仍有 " + remain + " 项待重试") : "待提交已全部保存 ✓",
+          remain ? "error" : "ok");
+        return;
+      }
+      var item = list[pos];
+      var payload = Object.assign({ sheet: item.sheet, rowIndex: item.rowIndex,
+        expectedName: item.expectedName, resultColumn: item.resultColumn || undefined,
+        resultCol: item.resultCol || undefined, fileName: state.fileName,
+        fileFingerprint: state.fileFingerprint }, item.fields || {});
+      patchCase(payload, function () { next(pos + 1); }, function () { next(pos + 1); });
+    }
+    next(0);
+  }
+
+  // 通用 PATCH 写回：串行发送，确保每次请求都使用上一次写回后的最新文件指纹。
+  // 自动跳转会在前一个请求返回前触发下一条保存，直接并发发送会让后端把后续请求判为外部修改。
+  var patchQueue = [];
+  var patchBusy = false;
+
+  function invokePatchCallback(callback) {
+    if (!callback) return;
+    try { callback(); } catch (e) { /* 单条回调异常不能阻塞后续写回 */ }
+  }
+
   function patchCase(payload, onOk, onFail) {
-    // 会话隔离：声明页面所属文件，服务端切换文件后拒写并提示刷新
-    payload.fileName = state.fileName || undefined;
+    var queuedPayload = Object.assign({}, payload);
+    // 固定请求所属文件；同一文件内的指纹在真正发送时再取最新值。
+    if (!queuedPayload.fileName) queuedPayload.fileName = state.fileName || undefined;
+    if (!queuedPayload.fileFingerprint) queuedPayload.fileFingerprint = state.fileFingerprint || undefined;
+    patchQueue.push({
+      payload: queuedPayload,
+      onOk: onOk,
+      onFail: onFail,
+    });
+    drainPatchQueue();
+  }
+
+  function drainPatchQueue() {
+    if (patchBusy || !patchQueue.length) return;
+    patchBusy = true;
+    var job = patchQueue.shift();
+    // 会话隔离：声明页面所属文件；文件指纹必须在真正发请求时取最新值。
+    var sameFile = !job.payload.fileName || !state.fileName ||
+      job.payload.fileName === state.fileName;
+    var requestPayload = Object.assign({}, job.payload, {
+      fileName: job.payload.fileName || state.fileName || undefined,
+      fileFingerprint: sameFile
+        ? (state.fileFingerprint || job.payload.fileFingerprint || undefined)
+        : job.payload.fileFingerprint,
+    });
     fetchJSON("/api/cases", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestPayload),
     })
       .then(function (res) {
         if (!res.ok) {
-          setSaveStatus(res.d && res.d.error ? res.d.error : "保存失败", "error");
-          if (onFail) onFail();
+          var message = res.d && res.d.error ? res.d.error : "保存失败";
+          var pendingCount = queuePending(requestPayload, message);
+          setSaveStatus(message + " · 待重试 " + pendingCount + " 项", "error");
+          invokePatchCallback(job.onFail);
           return;
         }
         // 进度改为前端按选中轮次列本地统计，后端 progress（主列口径）不再采用
         updateProgress();
+        removePending(requestPayload);
+        if (res.d.fileFingerprint) state.fileFingerprint = res.d.fileFingerprint;
         setSaveStatus("已保存 ✓", "ok");
-        if (onOk) onOk();
+        invokePatchCallback(job.onOk);
       })
       .catch(function () {
-        setSaveStatus("保存失败", "error");
-        if (onFail) onFail();
+        var pendingCount = queuePending(requestPayload, "网络错误");
+        setSaveStatus("保存失败 · 待重试 " + pendingCount + " 项", "error");
+        invokePatchCallback(job.onFail);
+      })
+      .then(function () {
+        patchBusy = false;
+        drainPatchQueue();
       });
   }
 
@@ -1465,6 +2149,254 @@
     el.detailSummary.textContent = "共 " + state.sheets.length + " 个 Sheet · 可执行 " +
       execGroups + " 组 · 已完成 " + p.done + " / " + p.total +
       (filterActive() ? "（筛选中）" : "");
+  }
+
+  /* ---------- 轮次对比与回归分析 ---------- */
+  function resultForColumn(c, column) {
+    if (column && c.results && Object.prototype.hasOwnProperty.call(c.results, column)) {
+      return c.results[column] || "";
+    }
+    return column === effectiveColFor(c.sheet).name ? c.result || "" : "";
+  }
+  function isFailure(raw) { return ["FAIL", "BLOCK"].indexOf(normalizeResult(raw)) >= 0; }
+  function compareMatches(c, current, previous) {
+    var mode = state.compareMode || "all";
+    var now = normalizeResult(resultForColumn(c, current));
+    var before = normalizeResult(resultForColumn(c, previous));
+    if (mode === "regression") return ["PASS", "NA"].indexOf(before) >= 0 && isFailure(now);
+    if (mode === "newFail") return isFailure(now) && !isFailure(before);
+    if (mode === "continuousFail") return isFailure(now) && isFailure(before);
+    if (mode === "fixed") return ["PASS", "NA"].indexOf(now) >= 0 && isFailure(before);
+    return true;
+  }
+  function resultBadge(raw) {
+    var norm = normalizeResult(raw);
+    var span = document.createElement("span");
+    span.className = "sg-case-res " + (RESULT_CLASS[norm] || "res-none");
+    span.textContent = norm ? RESULT_LABEL[norm] : "未测";
+    return span;
+  }
+  function renderCompare() {
+    var options = roundOptions();
+    var current = state.selectedRound || options[options.length - 1] || "";
+    var currentIndex = options.indexOf(current);
+    var previous = currentIndex > 0 ? options[currentIndex - 1] : "";
+    el.compareMode.value = state.compareMode || "all";
+    el.compareSummary.textContent = current + (previous ? " 对比 " + previous : "（暂无上一轮，显示当前轮次）") +
+      (filterActive() ? " · 当前筛选工作集" : "");
+    el.compareBody.innerHTML = "";
+    if (!options.length) {
+      el.compareBody.textContent = "当前文件没有可比较的结果列";
+      return;
+    }
+    var table = document.createElement("table");
+    table.className = "compare-table";
+    var head = document.createElement("tr");
+    ["用例", "模块", previous || "上一轮", current || "当前轮", "变化"].forEach(function (text) {
+      var th = document.createElement("th"); th.textContent = text; head.appendChild(th);
+    });
+    var thead = document.createElement("thead"); thead.appendChild(head); table.appendChild(thead);
+    var body = document.createElement("tbody");
+    var count = 0;
+    visibleIndices().forEach(function (index) {
+      var c = state.cases[index];
+      if (!compareMatches(c, current, previous)) return;
+      count++;
+      var beforeRaw = resultForColumn(c, previous);
+      var nowRaw = resultForColumn(c, current);
+      var before = normalizeResult(beforeRaw), now = normalizeResult(nowRaw);
+      var change = before === now ? "无变化" : (before || "未测") + " → " + (now || "未测");
+      var tr = document.createElement("tr");
+      var name = document.createElement("button"); name.type = "button"; name.className = "ct-link";
+      name.textContent = c.name || c.title || c.caseId || "(未命名)";
+      name.addEventListener("click", function () { openCase(index); });
+      var tdName = document.createElement("td"); tdName.appendChild(name); tr.appendChild(tdName);
+      var tdModule = document.createElement("td"); tdModule.textContent = c.module || c.sheetTitle || ""; tr.appendChild(tdModule);
+      var tdBefore = document.createElement("td"); tdBefore.appendChild(resultBadge(beforeRaw)); tr.appendChild(tdBefore);
+      var tdNow = document.createElement("td"); tdNow.appendChild(resultBadge(nowRaw)); tr.appendChild(tdNow);
+      var tdChange = document.createElement("td"); tdChange.textContent = change; tr.appendChild(tdChange);
+      body.appendChild(tr);
+    });
+    table.appendChild(body); el.compareBody.appendChild(table);
+    if (!count) el.compareBody.textContent = "当前筛选和对比条件下没有匹配用例";
+  }
+
+  /* ---------- 报告 ---------- */
+  var COMMAND_ACTIONS = [
+    { label: "轮次对比", action: function () { closeCommandPalette(); showView("compare"); } },
+    { label: "测试报告", action: function () { closeCommandPalette(); openReport(); } },
+    { label: "任务中心", action: function () { closeCommandPalette(); openTasks(); } },
+    { label: "备份与恢复", action: function () { closeCommandPalette(); openBackups(); } },
+    { label: "设置", action: function () { closeCommandPalette(); openSettings(); } },
+  ];
+  function renderCommandList() {
+    var query = (el.commandInput.value || "").trim().toLowerCase();
+    el.commandList.innerHTML = "";
+    COMMAND_ACTIONS.filter(function (item) { return !query || item.label.toLowerCase().indexOf(query) >= 0; })
+      .forEach(function (item) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "command-item command-action";
+        button.textContent = item.label;
+        button.addEventListener("click", item.action);
+        el.commandList.appendChild(button);
+      });
+    if (!query && !state.cases.length) return;
+    var found = 0;
+    state.cases.forEach(function (c, index) {
+      if (found >= 30) return;
+      var haystack = [c.caseId, c.name, c.title, c.scenario, c.module, c.sheet].join(" ").toLowerCase();
+      if (query && haystack.indexOf(query) < 0) return;
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "command-item";
+      button.textContent = (c.caseId || c.name || "用例") + "  " + (c.title || c.scenario || "") + (c.module ? "  ·  " + c.module : "");
+      button.addEventListener("click", function () { closeCommandPalette(); openCase(index); });
+      el.commandList.appendChild(button);
+      found++;
+    });
+    if (!el.commandList.children.length) el.commandList.textContent = "没有匹配项";
+  }
+  function openCommandPalette() {
+    el.commandModal.classList.remove("hidden");
+    el.commandInput.value = "";
+    renderCommandList();
+    el.commandInput.focus();
+  }
+  function closeCommandPalette() { el.commandModal.classList.add("hidden"); }
+
+  function reportData() {
+    var counts = { PASS: 0, FAIL: 0, BLOCK: 0, NA: 0, UNTESTED: 0 };
+    var failed = [], modules = {};
+    var totalTime = 0;
+    visibleIndices().forEach(function (i) {
+      var c = state.cases[i], norm = normalizeResult(caseResult(c));
+      counts[norm || "UNTESTED"]++;
+      var mod = c.module || c.sheetTitle || c.sheet || "未分组";
+      if (!modules[mod]) modules[mod] = { total: 0, done: 0, fail: 0 };
+      modules[mod].total++;
+      if (norm) modules[mod].done++;
+      if (isFailure(norm)) { modules[mod].fail++; failed.push(c); }
+      totalTime += state.timings[rowKey(c)] || 0;
+    });
+    return { counts: counts, failed: failed, modules: modules, total: visibleIndices().length,
+      totalTime: totalTime, averageTime: totalTime / Math.max(1, visibleIndices().length) };
+  }
+  function buildReportMarkdown() {
+    var data = reportData(), activity = state.activity || {};
+    var lines = ["# 测试执行报告", "", "- 文件：" + state.fileName,
+      "- 记录用时：" + Math.round(data.totalTime / 1000) + " 秒，平均 " + Math.round(data.averageTime / 1000) + " 秒/条",
+      "- 结果列：" + (state.selectedRound || "默认"),
+      "- 版本：" + (activity.version || "未填写"),
+      "- 构建：" + (activity.build || "未填写"),
+      "- 设备：" + (activity.device || "未填写"),
+      "- 环境：" + (activity.environment || "未填写"),
+      "- 测试人员：" + (state.sessionTester || "未填写"), "",
+      "## 总体结果", "", "| 状态 | 数量 |", "| --- | ---: |",
+      "| 通过 | " + data.counts.PASS + " |", "| 失败 | " + data.counts.FAIL + " |",
+      "| 阻塞 | " + data.counts.BLOCK + " |", "| 跳过 | " + data.counts.NA + " |",
+      "| 未测 | " + data.counts.UNTESTED + " |", "", "## 模块分布", "",
+      "| 模块 | 用例数 | 已完成 | 失败 |", "| --- | ---: | ---: | ---: |"];
+    Object.keys(data.modules).forEach(function (name) {
+      var m = data.modules[name]; lines.push("| " + name.replace(/\|/g, "\\|") + " | " + m.total + " | " + m.done + " | " + m.fail + " |");
+    });
+    lines.push("", "## 失败与阻塞", "");
+    if (!data.failed.length) lines.push("暂无失败或阻塞用例");
+    data.failed.forEach(function (c) {
+      lines.push("- **" + (c.name || c.title || "未命名") + "** · BugID: " + (c.bugId || "未填写") +
+        " · 测试人员: " + (c.tester || state.sessionTester || "未填写"));
+      if (c.actual) lines.push("  - 实际现象：" + c.actual.replace(/\n/g, " "));
+      if (c.note) lines.push("  - 备注：" + c.note.replace(/\n/g, " "));
+    });
+    return lines.join("\n");
+  }
+  function openReport() {
+    flushSave();
+    var data = reportData();
+    el.reportStats.textContent = "当前工作集 " + data.total + " 条 · 通过 " + data.counts.PASS +
+      " · 失败 " + data.counts.FAIL + " · 阻塞 " + data.counts.BLOCK + " · 未测 " + data.counts.UNTESTED;
+    el.reportBody.textContent = buildReportMarkdown();
+    el.reportModal.classList.remove("hidden");
+  }
+  function closeReport() { el.reportModal.classList.add("hidden"); }
+  function downloadReport() {
+    var blob = new Blob([el.reportBody.textContent], { type: "text/markdown;charset=utf-8" });
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = (state.fileName || "测试报告").replace(/\.xlsx$/i, "") + "_报告.md";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+  function downloadHtmlReport() {
+    var text = el.reportBody.textContent;
+    var escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    var html = "<!doctype html><meta charset=\"utf-8\"><title>测试执行报告</title>" +
+      "<style>body{font:14px/1.6 Arial,sans-serif;max-width:960px;margin:32px auto;padding:0 20px;color:#202733}pre{white-space:pre-wrap;background:#f5f7fb;padding:16px;border-radius:8px}</style>" +
+      "<pre>" + escaped + "</pre>";
+    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = (state.fileName || "测试报告").replace(/\.xlsx$/i, "") + "_报告.html";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  /* ---------- 任务中心 ---------- */
+  function renderTasks(tasks) {
+    el.taskList.innerHTML = "";
+    if (!tasks.length) { el.taskList.textContent = "当前文件暂无分发任务"; return; }
+    tasks.forEach(function (task) {
+      var row = document.createElement("div"); row.className = "task-item";
+      var info = document.createElement("div"); info.className = "task-info";
+      var title = document.createElement("strong"); title.textContent = (task.tester || "未分配") + " · " + task.targetCount + " 条用例";
+      var meta = document.createElement("span"); meta.textContent = "创建 " + (task.createdAt || "") + (task.dueAt ? " · 截止 " + task.dueAt : "");
+      info.appendChild(title); info.appendChild(meta);
+      var select = document.createElement("select"); select.className = "sheet-select task-status";
+      ["待执行", "执行中", "待回传", "待合入", "已完成", "导出失败"].forEach(function (status) {
+        var option = document.createElement("option"); option.value = status; option.textContent = status; select.appendChild(option);
+      });
+      select.value = task.status || "待执行";
+      select.addEventListener("change", function () { updateTask(task.taskId, select.value); });
+      row.appendChild(info); row.appendChild(select); el.taskList.appendChild(row);
+    });
+  }
+  function openTasks() {
+    el.taskModal.classList.remove("hidden"); el.taskHint.textContent = "正在读取任务…";
+    fetchJSON("/api/tasks").then(function (res) {
+      if (!res.ok) { el.taskHint.textContent = res.d.error || "读取任务失败"; return; }
+      el.taskHint.textContent = "任务状态保存在当前 Excel 文件的隐藏任务页";
+      renderTasks(res.d.tasks || []);
+    }).catch(function () { el.taskHint.textContent = "网络错误"; });
+  }
+  function closeTasks() { el.taskModal.classList.add("hidden"); }
+  function updateTask(taskId, status) {
+    fetchJSON("/api/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskId: taskId, status: status, fileName: state.fileName,
+        fileFingerprint: state.fileFingerprint }) }).then(function (res) {
+      if (!res.ok) setSaveStatus(res.d.error || "任务更新失败", "error");
+      else { state.fileFingerprint = res.d.fileFingerprint || state.fileFingerprint; setSaveStatus("任务状态已更新", "ok"); }
+    }).catch(function () { setSaveStatus("任务更新失败", "error"); });
+  }
+
+  /* ---------- 本机设置与主题 ---------- */
+  var THEME_KEY = "tcreader.darkMode";
+  function applyTheme(enabled) {
+    document.body.classList.toggle("dark-mode", !!enabled);
+    try { localStorage.setItem(THEME_KEY, enabled ? "1" : "0"); } catch (e) {}
+  }
+  function loadTheme() {
+    var enabled = false;
+    try { enabled = localStorage.getItem(THEME_KEY) === "1"; } catch (e) {}
+    applyTheme(enabled);
+  }
+  function openSettings() {
+    el.bugUrlInput.value = bugUrlTemplate();
+    el.darkModeToggle.checked = document.body.classList.contains("dark-mode");
+    el.settingsModal.classList.remove("hidden");
+  }
+  function closeSettings() { el.settingsModal.classList.add("hidden"); }
+  function saveSettings() {
+    try { localStorage.setItem(BUG_URL_KEY, el.bugUrlInput.value.trim()); } catch (e) {}
+    applyTheme(el.darkModeToggle.checked);
+    updateBugLink(el.bugId.value);
+    closeSettings();
+    setSaveStatus("设置已保存", "ok");
   }
 
   function buildCaseGroup(sheetMeta, items) {
@@ -1767,6 +2699,11 @@
   function save() {
     var c = state.cases[state.index];
     if (!c) return;
+    state.saveTimer = null;
+    if (state.caseOpenedAt) {
+      state.timings[rowKey(c)] = (state.timings[rowKey(c)] || 0) + Math.max(0, Date.now() - state.caseOpenedAt);
+      state.caseOpenedAt = Date.now();
+    }
     var fields = collectFields();
     // 同步到本地内存，切换用例时保持回显（结果写入当前轮次列）
     setCaseResult(c, fields.result);
@@ -1812,7 +2749,8 @@
     fetchJSON("/api/result-columns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name, fileName: state.fileName || undefined }),
+      body: JSON.stringify({ name: name, fileName: state.fileName || undefined,
+                             fileFingerprint: state.fileFingerprint || undefined }),
     })
       .then(function (res) {
         if (!res.ok) {
@@ -1866,7 +2804,8 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resultColumn: state.selectedRound || "",
-                             fileName: state.fileName || undefined }),
+                             fileName: state.fileName || undefined,
+                             fileFingerprint: state.fileFingerprint || undefined }),
     })
       .then(function (res) {
         if (!res.ok) {
@@ -1888,10 +2827,393 @@
         else if (state.view === "detail") renderDetail();
         else if (state.view === "exec") render();
         updateProgress();
-        setSaveStatus("已清除 " + res.d.cleared + " 条结果（已自动备份）", "ok");
+         if (res.d.fileFingerprint) state.fileFingerprint = res.d.fileFingerprint;
+         setSaveStatus("已清除 " + res.d.cleared + " 条结果（已自动备份）", "ok");
       })
       .catch(function () {
         el.confirmOk.disabled = false;
+        setSaveStatus("网络错误", "error");
+      });
+  }
+
+  /* ---------- 子任务：导出 / 合入（团队协作测试） ---------- */
+  function escHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  var SUBTASK_FIELD_LABEL = {
+    result: "测试结果", actual: "实际现象", bugId: "BugID",
+    note: "备注", foundTime: "发现时间",
+  };
+  var subtaskPreviewState = null; // { importId, resultHeader, items, selections }
+
+  // 从响应头解析下载文件名：优先 UTF-8 编码名（filename*=UTF-8''），
+  // 其次 ASCII 兜底名（filename=）；解析失败返回空串由调用方兜底。
+  function subtaskFileName(resp) {
+    var cd = resp.headers.get("Content-Disposition") || "";
+    var m = /filename\*=UTF-8''([^;]+)/i.exec(cd) ||
+            /filename="?([^";]+)"?/i.exec(cd);
+    if (!m) return "";
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch (e) {
+      return m[1].trim();
+    }
+  }
+
+  // 导出模态：展示数量与 sheet 分布，可选填分发给的测试人员
+  function openExportSubtask() {
+    flushSave();
+    var vis = visibleIndices();
+    if (!state.cases.length) { setSaveStatus("当前没有可导出的用例", "error"); return; }
+    if (!vis.length) {
+      if (!window.confirm("当前筛选条件下没有匹配用例，将导出全部 " +
+          state.cases.length + " 条用例，是否继续？")) return;
+      vis = state.cases.map(function (_, i) { return i; });
+    }
+    var sheetCount = {};
+    vis.forEach(function (i) {
+      var s = state.cases[i].sheet;
+      sheetCount[s] = (sheetCount[s] || 0) + 1;
+    });
+    var parts = [];
+    Object.keys(sheetCount).forEach(function (s) {
+      parts.push(s + " " + sheetCount[s] + " 条");
+    });
+    var effName = vis.length ? effectiveColFor(state.cases[vis[0]].sheet).name : "";
+    el.subtaskExportDesc.textContent = "将导出当前范围 " + vis.length +
+      " 条用例，来自 " + parts.length + " 个工作表。";
+    el.subtaskExportSheets.textContent = parts.join(" · ");
+    el.subtaskTesterInput.value = state.sessionTester || "";
+    el.subtaskExportHint.textContent = "子文件仅保留结果列「" + (effName || "测试结果") +
+      "」，并附带行级匹配元数据；若填写分发给，将写入主文件\"测试人员\"列。";
+    el.subtaskExportOk.disabled = false;
+    el.subtaskExportModal.classList.remove("hidden");
+    el.subtaskTesterInput.focus();
+  }
+
+  function closeExportSubtask() {
+    el.subtaskExportModal.classList.add("hidden");
+  }
+
+  function doExportSubtask() {
+    var vis = visibleIndices();
+    if (!vis.length) {
+      vis = state.cases.map(function (_, i) { return i; });
+    }
+    var targets = vis.map(function (i) {
+      var c = state.cases[i];
+      return { sheet: c.sheet, rowIndex: c.rowIndex };
+    });
+    el.subtaskExportOk.disabled = true;
+    setSaveStatus("正在导出子任务…", "saving");
+    fetch("/api/subtask/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targets: targets,
+        tester: el.subtaskTesterInput.value.trim() || "",
+        resultHeader: state.selectedRound || undefined,
+        fileName: state.fileName || undefined,
+        fileFingerprint: state.fileFingerprint || undefined,
+        createTask: true,
+        dueAt: el.subtaskDueInput.value || "",
+        taskNote: el.subtaskTaskNote.value.trim() || "",
+      }),
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          return r.json().then(function (d) {
+            el.subtaskExportOk.disabled = false;
+            setSaveStatus(d.error || "导出失败", "error");
+          });
+        }
+        return r.blob().then(function (blob) {
+          state.taskId = r.headers.get("X-Task-Id") || "";
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = subtaskFileName(r) || "子任务.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          // 延迟撤销对象 URL：立即 revoke 在部分浏览器（Chrome/Edge 新版、
+          // 大文件/慢下载）会中断下载，导致"点击后无文件落地"
+          setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+          el.subtaskExportOk.disabled = false;
+          closeExportSubtask();
+          setSaveStatus("子任务已导出（主文件测试人员已更新）", "ok");
+          reloadAfterSubtask();
+        });
+      })
+      .catch(function () {
+        el.subtaskExportOk.disabled = false;
+        setSaveStatus("网络错误", "error");
+      });
+  }
+
+  // 合入/导出写主文件后重拉负载，尽量保留页面状态
+  function reloadAfterSubtask() {
+    var keepIndex = state.index;
+    var keepView = state.view;
+    var keepFilter = JSON.parse(JSON.stringify(state.filter));
+    var keepFilterOpen = state.filterOpen;
+    fetchJSON("/api/cases").then(function (r2) {
+      if (!r2.ok || r2.d.needsSetup) return;
+      applyPayload(r2.d);
+      state.index = Math.min(keepIndex, Math.max(0, state.cases.length - 1));
+      state.filterOpen = keepFilterOpen;
+      applyPresetFilter(keepFilter);
+      showView(keepView === "setup" ? "exec" : keepView);
+    });
+  }
+
+  // 导入模态：上传子文件 → 预览（三态差异表）→ 勾选确认合入
+  function openImportResults() {
+    flushSave();
+    subtaskPreviewState = null;
+    el.subtaskFileInput.value = "";
+    el.subtaskImportHint.textContent = "选择辅助人员回传的子任务文件（.xlsx）后上传预览。";
+    el.subtaskImportHint.classList.remove("subtask-err");
+    el.subtaskPreview.classList.add("hidden");
+    el.subtaskMergeResult.classList.add("hidden");
+    el.subtaskMergeOk.disabled = true;
+    el.subtaskImportModal.classList.remove("hidden");
+  }
+
+  function closeImportResults() {
+    el.subtaskImportModal.classList.add("hidden");
+  }
+
+  function uploadSubtaskFile() {
+    var file = el.subtaskFileInput.files && el.subtaskFileInput.files[0];
+    if (!file) { el.subtaskImportHint.textContent = "请先选择子任务文件。"; return; }
+    if (!/\.xlsx$/i.test(file.name)) {
+      el.subtaskImportHint.textContent = "仅支持 .xlsx 子任务文件。";
+      return;
+    }
+    var fd = new FormData();
+    fd.append("file", file);
+    fd.append("fileName", state.fileName || "");
+    fd.append("fileFingerprint", JSON.stringify(state.fileFingerprint || {}));
+    el.subtaskUploadBtn.disabled = true;
+    el.subtaskImportHint.textContent = "正在解析并匹配…";
+    el.subtaskImportHint.classList.remove("subtask-err");
+    fetch("/api/subtask/import-preview", { method: "POST", body: fd })
+      .then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      })
+      .then(function (res) {
+        el.subtaskUploadBtn.disabled = false;
+        if (!res.ok) {
+          el.subtaskImportHint.textContent = res.d.error || "解析失败";
+          el.subtaskImportHint.classList.add("subtask-err");
+          return;
+        }
+        subtaskPreviewState = {
+          importId: res.d.importId,
+          resultHeader: res.d.resultHeader || "",
+          items: res.d.items || [],
+          selections: {},
+        };
+        renderSubtaskPreview(res.d);
+      })
+      .catch(function () {
+        el.subtaskUploadBtn.disabled = false;
+        el.subtaskImportHint.textContent = "网络错误";
+        el.subtaskImportHint.classList.add("subtask-err");
+      });
+  }
+
+  function renderSubtaskPreview(data) {
+    var items = data.items || [];
+    var stats = [];
+    var exact = items.filter(function (it) { return it.status === "exact"; }).length;
+    var fuzzy = items.filter(function (it) {
+      return ["caseid", "title", "steps"].indexOf(it.status) >= 0;
+    }).length;
+    var conflicted = (data.conflicts || []).length;
+    var unmatched = (data.unmatched || []).length;
+    if (exact) stats.push('<span class="st st-ok">精确命中 ' + exact + "</span>");
+    if (fuzzy) stats.push('<span class="st st-warn">模糊匹配 ' + fuzzy + "</span>");
+    if (conflicted) stats.push('<span class="st st-err">冲突 ' + conflicted + "</span>");
+    if (unmatched) stats.push('<span class="st st-gray">未匹配 ' + unmatched + "</span>");
+    stats.push('<span class="st st-gray">结果列：' +
+      escHtml(data.resultHeader || "测试结果") + "</span>");
+    if (data.warning) {
+      stats.push('<span class="st st-err">该子文件来源与当前主文件不一致，已按内容模糊匹配</span>');
+    }
+    el.subtaskStats.innerHTML = stats.join("");
+
+    // 默认勾选：主文件为空且子文件有值
+    var selections = {};
+    items.forEach(function (it, idx) {
+      var sel = {};
+      Object.keys(SUBTASK_FIELD_LABEL).forEach(function (f) {
+        sel[f] = !it.main[f] && !!it.sub[f];
+      });
+      selections[idx] = sel;
+    });
+    subtaskPreviewState.selections = selections;
+
+    var html = "";
+    var first = true;
+    items.forEach(function (it, idx) {
+      var rowClass = it.status === "unmatched" ? "row-gray" : "";
+      Object.keys(SUBTASK_FIELD_LABEL).forEach(function (f) {
+        var mainV = it.main[f] || "";
+        var subV = it.sub[f] || "";
+        var isConflict = it.conflicts.indexOf(f) >= 0;
+        var isGap = !mainV && !!subV;
+        var cellClass = isConflict ? "cell-conflict" : (isGap ? "cell-gap" : "");
+        var disabled = it.status === "unmatched" || !subV;
+        var checked = !disabled && !!selections[idx][f];
+        html += '<tr class="' + rowClass + '">' +
+          '<td class="td-case">' + (first ? escHtml(it.title || it.caseId || "(未命名)") : "") + "</td>" +
+          '<td class="td-field">' + SUBTASK_FIELD_LABEL[f] + "</td>" +
+          '<td class="td-val">' + escHtml(mainV) + "</td>" +
+          '<td class="td-val ' + cellClass + '"><label class="subtask-check">' +
+          '<input type="checkbox" data-idx="' + idx + '" data-field="' + f + '"' +
+          (checked ? " checked" : "") + (disabled ? " disabled" : "") + "> " +
+          escHtml(subV) + "</label></td></tr>";
+        first = false;
+      });
+    });
+    el.subtaskDiffBody.innerHTML = html ||
+      '<tr><td colspan="4" class="td-empty">子文件没有可合入的条目</td></tr>';
+    updateMergeButton();
+    el.subtaskPreview.classList.remove("hidden");
+    el.subtaskMergeResult.classList.add("hidden");
+  }
+
+  function onSubtaskCheckChange() {
+    if (!subtaskPreviewState) return;
+    el.subtaskDiffBody.querySelectorAll('input[type="checkbox"]:not(:disabled)')
+      .forEach(function (cb) {
+        var idx = parseInt(cb.getAttribute("data-idx"), 10);
+        var f = cb.getAttribute("data-field");
+        if (subtaskPreviewState.selections[idx]) {
+          subtaskPreviewState.selections[idx][f] = cb.checked;
+        }
+      });
+    updateMergeButton();
+  }
+
+  function countSelected() {
+    if (!subtaskPreviewState) return 0;
+    var n = 0;
+    Object.keys(subtaskPreviewState.selections).forEach(function (idx) {
+      var sel = subtaskPreviewState.selections[idx];
+      Object.keys(sel).forEach(function (f) { if (sel[f]) n++; });
+    });
+    return n;
+  }
+
+  function updateMergeButton() {
+    var n = countSelected();
+    el.subtaskMergeOk.textContent = "确认合入（" + n + " 项）";
+    el.subtaskMergeOk.disabled = n === 0;
+  }
+
+  // 把 selections 同步回表格 checkbox（供批量按钮）
+  function syncChecks() {
+    el.subtaskDiffBody.querySelectorAll('input[type="checkbox"]:not(:disabled)')
+      .forEach(function (cb) {
+        var idx = parseInt(cb.getAttribute("data-idx"), 10);
+        var f = cb.getAttribute("data-field");
+        cb.checked = !!(subtaskPreviewState.selections[idx] &&
+                        subtaskPreviewState.selections[idx][f]);
+      });
+  }
+
+  function selectOnlyEmpty() {
+    if (!subtaskPreviewState) return;
+    subtaskPreviewState.items.forEach(function (it, idx) {
+      var sel = subtaskPreviewState.selections[idx] || {};
+      Object.keys(SUBTASK_FIELD_LABEL).forEach(function (f) {
+        sel[f] = !it.main[f] && !!it.sub[f];
+      });
+    });
+    syncChecks();
+    updateMergeButton();
+  }
+
+  function selectAll() {
+    if (!subtaskPreviewState) return;
+    subtaskPreviewState.items.forEach(function (it, idx) {
+      if (it.status === "unmatched") return;
+      var sel = subtaskPreviewState.selections[idx] || {};
+      Object.keys(SUBTASK_FIELD_LABEL).forEach(function (f) {
+        sel[f] = !!it.sub[f];
+      });
+    });
+    syncChecks();
+    updateMergeButton();
+  }
+
+  function selectNone() {
+    if (!subtaskPreviewState) return;
+    subtaskPreviewState.items.forEach(function (it, idx) {
+      var sel = subtaskPreviewState.selections[idx] || {};
+      Object.keys(SUBTASK_FIELD_LABEL).forEach(function (f) { sel[f] = false; });
+    });
+    syncChecks();
+    updateMergeButton();
+  }
+
+  function doMergeSubtask() {
+    if (!subtaskPreviewState) return;
+    var approvals = [];
+    subtaskPreviewState.items.forEach(function (it, idx) {
+      if (it.status === "unmatched" || !it.mainRow) return;
+      var fields = {};
+      var sel = subtaskPreviewState.selections[idx] || {};
+      Object.keys(SUBTASK_FIELD_LABEL).forEach(function (f) {
+        if (sel[f]) fields[f] = it.sub[f] || "";
+      });
+      if (Object.keys(fields).length) {
+        approvals.push({ sheet: it.sheet, mainRowIndex: it.mainRow, fields: fields });
+      }
+    });
+    if (!approvals.length) { setSaveStatus("未勾选任何可合入的字段", "error"); return; }
+    el.subtaskMergeOk.disabled = true;
+    setSaveStatus("正在合入…", "saving");
+    fetchJSON("/api/subtask/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        importId: subtaskPreviewState.importId,
+        approvals: approvals,
+        fileName: state.fileName || undefined,
+        fileFingerprint: state.fileFingerprint || undefined,
+        taskId: state.taskId || undefined,
+      }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          el.subtaskMergeOk.disabled = false;
+          setSaveStatus(res.d && res.d.error ? res.d.error : "合入失败", "error");
+          return;
+        }
+        var d = res.d;
+        var lines = ["合入完成：成功写入 " + d.merged + " 项" +
+          (d.skipped ? "，无变化跳过 " + d.skipped + " 项" : "") +
+          (d.failures && d.failures.length ? "，失败 " + d.failures.length + " 项" : "") + "。"];
+        (d.failures || []).forEach(function (f) {
+          lines.push("· " + (f.title || "?") + "：" + f.reason);
+        });
+        el.subtaskMergeResult.innerHTML = lines.map(function (l) {
+          return '<div class="merge-line">' + escHtml(l) + "</div>";
+        }).join("");
+        el.subtaskMergeResult.classList.remove("hidden");
+        el.subtaskPreview.classList.add("hidden");
+        setSaveStatus("已合入 " + d.merged + " 项（已自动备份）", "ok");
+        reloadAfterSubtask();
+      })
+      .catch(function () {
+        el.subtaskMergeOk.disabled = false;
         setSaveStatus("网络错误", "error");
       });
   }
@@ -1903,6 +3225,17 @@
     el.uploadInput.addEventListener("change", uploadFile);
     el.startBtn.addEventListener("click", startTest);
     el.changeFile.addEventListener("click", function () { flushSave(); showSetup(); });
+    el.preflightCancel.addEventListener("click", closePreflight);
+    el.preflightOk.addEventListener("click", confirmPreflight);
+    el.preflightModal.addEventListener("click", function (e) {
+      if (e.target === el.preflightModal) closePreflight();
+    });
+    el.backupBtn.addEventListener("click", openBackups);
+    el.backupClose.addEventListener("click", closeBackups);
+    el.retryPendingBtn.addEventListener("click", retryPending);
+    el.backupModal.addEventListener("click", function (e) {
+      if (e.target === el.backupModal) closeBackups();
+    });
 
     // 顶栏"···"更多菜单（低频全局动作）
     el.moreBtn.addEventListener("click", function (e) {
@@ -1918,6 +3251,30 @@
     el.confirmOk.addEventListener("click", doClearRound);
     el.confirmOverlay.addEventListener("click", function (e) {
       if (e.target === el.confirmOverlay) closeClearConfirm();
+    });
+
+    // 子任务：导出（含测试人员分发）与导入合入（预览三态 + 勾选确认）
+    el.exportSubtaskBtn.addEventListener("click", openExportSubtask);
+    el.subtaskExportCancel.addEventListener("click", closeExportSubtask);
+    el.subtaskExportOk.addEventListener("click", doExportSubtask);
+    el.subtaskExportModal.addEventListener("click", function (e) {
+      if (e.target === el.subtaskExportModal) closeExportSubtask();
+    });
+    el.importResultsBtn.addEventListener("click", openImportResults);
+    el.subtaskUploadBtn.addEventListener("click", uploadSubtaskFile);
+    el.subtaskFileInput.addEventListener("change", function () {
+      if (el.subtaskFileInput.files && el.subtaskFileInput.files[0]) {
+        el.subtaskImportHint.textContent = "已选择文件，点击「上传预览」开始匹配。";
+      }
+    });
+    el.subtaskDiffBody.addEventListener("change", onSubtaskCheckChange);
+    el.subtaskOnlyEmptyBtn.addEventListener("click", selectOnlyEmpty);
+    el.subtaskSelectAllBtn.addEventListener("click", selectAll);
+    el.subtaskSelectNoneBtn.addEventListener("click", selectNone);
+    el.subtaskMergeCancel.addEventListener("click", closeImportResults);
+    el.subtaskMergeOk.addEventListener("click", doMergeSubtask);
+    el.subtaskImportModal.addEventListener("click", function (e) {
+      if (e.target === el.subtaskImportModal) closeImportResults();
     });
 
     // 自动跳转开关：更新状态并跨会话记忆
@@ -1938,6 +3295,7 @@
     el.resultButtons.addEventListener("click", function (e) {
       var btn = e.target.closest(".rbtn");
       if (!btn) return;
+      pushUndoSnapshot(state.cases[state.index]);
       var wasActive = btn.classList.contains("active");
       el.resultButtons.querySelectorAll(".rbtn").forEach(function (b) { b.classList.remove("active"); });
       if (!wasActive) btn.classList.add("active"); // 再次点击可取消
@@ -2060,6 +3418,60 @@
     });
 
     // 场景讲解折叠面板
+    el.compareBtn.addEventListener("click", function () { showView("compare"); });
+    el.reportBtn.addEventListener("click", openReport);
+    el.taskBtn.addEventListener("click", openTasks);
+    el.settingsBtn.addEventListener("click", openSettings);
+    el.compareMode.addEventListener("change", function () {
+      state.compareMode = el.compareMode.value;
+      renderCompare();
+    });
+    el.reportClose.addEventListener("click", closeReport);
+    el.reportCopy.addEventListener("click", function () {
+      var text = el.reportBody.textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { setSaveStatus("报告已复制", "ok"); });
+      }
+    });
+    el.reportDownload.addEventListener("click", downloadReport);
+    el.reportHtml.addEventListener("click", downloadHtmlReport);
+    el.reportModal.addEventListener("click", function (e) { if (e.target === el.reportModal) closeReport(); });
+    el.taskClose.addEventListener("click", closeTasks);
+    el.taskModal.addEventListener("click", function (e) { if (e.target === el.taskModal) closeTasks(); });
+    el.settingsClose.addEventListener("click", closeSettings);
+    el.settingsCancel.addEventListener("click", closeSettings);
+    el.settingsSave.addEventListener("click", saveSettings);
+    el.settingsModal.addEventListener("click", function (e) { if (e.target === el.settingsModal) closeSettings(); });
+    el.evidenceInput.addEventListener("change", function () {
+      if (el.evidenceInput.files && el.evidenceInput.files[0]) uploadEvidence(el.evidenceInput.files[0]);
+      el.evidenceInput.value = "";
+    });
+    el.bugId.addEventListener("input", function () {
+      el.bugId.classList.remove("attn");
+      updateBugLink(el.bugId.value);
+    });
+    el.batchSelectAll.addEventListener("change", function () {
+      var cur = state.cases[state.index];
+      if (!cur) return;
+      visibleIndices().forEach(function (index) {
+        var c = state.cases[index];
+        if (c.sheet !== cur.sheet) return;
+        if (el.batchSelectAll.checked) state.selectedRows[rowKey(c)] = true;
+        else delete state.selectedRows[rowKey(c)];
+      });
+      renderTable();
+    });
+    el.batchPass.addEventListener("click", function () { batchMark("PASS"); });
+    el.batchNa.addEventListener("click", function () { batchMark("NA"); });
+    el.batchClear.addEventListener("click", function () {
+      selectedTableItems().forEach(function (it) { delete state.selectedRows[rowKey(it.c)]; });
+      renderTable();
+    });
+    el.librarySearch.addEventListener("input", renderFileList);
+    el.commandClose.addEventListener("click", closeCommandPalette);
+    el.commandInput.addEventListener("input", renderCommandList);
+    el.commandModal.addEventListener("click", function (e) { if (e.target === el.commandModal) closeCommandPalette(); });
+
     el.sceneToggle.addEventListener("click", function () {
       var collapsed = el.sceneBody.classList.toggle("collapsed");
       el.sceneArrow.textContent = collapsed ? "▼" : "▲";
@@ -2103,6 +3515,7 @@
     flushSave(); // 切换前立即保存（如有待保存）
     state.index = ni;
     render();
+    saveCheckpoint();
   }
 
   function toggleHelp() {
@@ -2117,7 +3530,40 @@
       if (e.key === "Escape") { closeClearConfirm(); e.preventDefault(); }
       return;
     }
+    if (!el.preflightModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closePreflight(); e.preventDefault(); }
+      return;
+    }
+    if (!el.backupModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeBackups(); e.preventDefault(); }
+      return;
+    }
+    // 子任务模态打开时：Esc 关闭并拦截其余按键
+    if (!el.subtaskExportModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeExportSubtask(); e.preventDefault(); }
+      return;
+    }
+    if (!el.subtaskImportModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeImportResults(); e.preventDefault(); }
+      return;
+    }
     // 快捷键速查浮层：打开时 Esc/? 关闭并拦截其余按键；? 在任意非初始页可打开
+    if (!el.commandModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeCommandPalette(); e.preventDefault(); }
+      return;
+    }
+    if (!el.reportModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeReport(); e.preventDefault(); }
+      return;
+    }
+    if (!el.taskModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeTasks(); e.preventDefault(); }
+      return;
+    }
+    if (!el.settingsModal.classList.contains("hidden")) {
+      if (e.key === "Escape") { closeSettings(); e.preventDefault(); }
+      return;
+    }
     if (!el.helpOverlay.classList.contains("hidden")) {
       if (e.key === "Escape" || e.key === "?") { toggleHelp(); e.preventDefault(); }
       return;
@@ -2140,6 +3586,33 @@
       return;
     }
     if (e.key === "Escape" && resultMenu) { closeResultMenu(); return; }
+    if (e.ctrlKey && e.key.toLowerCase() === "z" && !typing0) {
+      undoLast();
+      e.preventDefault();
+      return;
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === "k" && !typing0) {
+      openCommandPalette();
+      e.preventDefault();
+      return;
+    }
+    if (!typing0 && e.key.toLowerCase() === "f" && state.view !== "setup") {
+      state.filterOpen = !state.filterOpen;
+      el.filterPanel.classList.toggle("hidden", !state.filterOpen);
+      e.preventDefault();
+      return;
+    }
+    if (!typing0 && e.key.toLowerCase() === "v" && (state.view === "exec" || state.view === "table")) {
+      state.preferTable = state.view !== "table";
+      showView(state.preferTable ? "table" : "exec");
+      e.preventDefault();
+      return;
+    }
+    if (!typing0 && e.key.toLowerCase() === "n" && state.view === "exec") {
+      jumpToNextUntested();
+      e.preventDefault();
+      return;
+    }
     if (state.view !== "exec") return; // 仅执行界面响应快捷键
     var tag = (e.target.tagName || "").toLowerCase();
     var typing = tag === "input" || tag === "textarea" || tag === "select";

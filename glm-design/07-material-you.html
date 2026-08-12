@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · Material You</title>
+<style>
+:root{
+  --md-primary:#6750a4; --md-on-primary:#fff; --md-primary-container:#eaddff; --md-on-primary-container:#21005d;
+  --md-surface:#fef7ff; --md-surface-1:#f3edf7; --md-surface-2:#eae6f0; --md-surface-3:#e1dcec;
+  --md-surface-var:#e7e0ec; --md-on-surface:#1d1b20; --md-on-surface-var:#49454f;
+  --md-outline:#79747e; --md-outline-var:#cac4d0;
+  --md-pass:#2e6b3f; --md-pass-container:#b8f0c4; --md-fail:#b3261e; --md-fail-container:#f9dcdc;
+  --md-block:#7c5800; --md-block-container:#ffdeae; --md-na:#6b6b6b; --md-na-container:#e8e8e8;
+  --sans:"Roboto","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);background:var(--md-surface);color:var(--md-on-surface);
+  font-size:14px;line-height:1.6;padding-bottom:84px;}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:12px 20px;background:var(--md-surface);flex-wrap:wrap;
+  box-shadow:0 1px 0 var(--md-outline-var);}
+.topbar-left{display:flex;align-items:center;gap:14px;min-width:0}
+.md-logo{flex:none;width:36px;height:36px;background:var(--md-primary);color:var(--md-on-primary);
+  display:flex;align-items:center;justify-content:center;font-size:18px;border-radius:12px}
+.brand{font-weight:500;font-size:18px;white-space:nowrap}
+.file-name{color:var(--md-on-surface-var);font-size:13px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:220px;background:var(--md-surface-2);padding:4px 12px;border-radius:999px}
+.topbar-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.btn{padding:8px 16px;border:1px solid var(--md-outline);background:var(--md-surface);color:var(--md-on-surface);
+  font-size:13px;cursor:pointer;font-family:var(--sans);white-space:nowrap;border-radius:999px;font-weight:500}
+.btn:hover{background:var(--md-surface-2)}
+.btn-primary{background:var(--md-primary);color:var(--md-on-primary);border:none}
+.btn-primary:hover{background:#7c66b7}
+.btn-icon{padding:8px 12px;width:auto;min-width:40px}
+.select{padding:8px 14px;border:1px solid var(--md-outline);background:var(--md-surface);font-size:13px;
+  color:var(--md-on-surface);max-width:150px;font-family:var(--sans);border-radius:999px}
+.progress-wrap{display:flex;align-items:center;gap:14px;padding:14px 20px;max-width:1240px;margin:0 auto}
+.progress-bar{flex:1;height:8px;background:var(--md-surface-3);border-radius:999px;overflow:hidden;display:flex}
+.progress-seg{height:100%}
+.progress-text{font-size:14px;color:var(--md-on-surface);white-space:nowrap;font-weight:500}
+.progress-text b{color:var(--md-primary);font-size:16px}
+.main{max-width:1240px;margin:0 auto;padding:14px 20px 40px}
+.card{background:var(--md-surface);border:none;border-radius:28px;padding:0;overflow:hidden;
+  box-shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);}
+.card-main{padding:28px 32px}
+.card-head{padding-bottom:18px;margin-bottom:6px;border-bottom:1px solid var(--md-surface-var)}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.badge{font-size:12px;padding:4px 12px;border-radius:8px;background:var(--md-surface-2);
+  color:var(--md-on-surface-var);font-weight:500}
+.badge-id{background:var(--md-primary-container);color:var(--md-on-primary-container);font-weight:700}
+.badge.p0{background:var(--md-fail-container);color:var(--md-fail);font-weight:700}
+.badge.risk{background:var(--md-block-container);color:var(--md-block)}
+.case-title{font-size:24px;line-height:1.4;margin:6px 0 0;font-weight:500;color:var(--md-on-surface)}
+.section{padding:16px 0;border-bottom:1px solid var(--md-surface-var)}
+.section:last-child{border-bottom:none}
+.section-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;
+  color:var(--md-on-surface-var);margin:0 0 10px;letter-spacing:.3px;text-transform:uppercase}
+.section-title::before{content:"";width:4px;height:16px;background:var(--md-primary);border-radius:2px}
+.section-body{white-space:pre-wrap;font-size:15px;line-height:1.7;color:var(--md-on-surface)}
+.precond{background:var(--md-surface-1);border-radius:16px;padding:14px 18px;font-size:14px;line-height:1.7}
+.expected{background:var(--md-pass-container);border-radius:16px;padding:14px 18px;font-size:14px;line-height:1.7;color:#1a4a28}
+.steps-list{margin:0;padding:0;list-style:none;font-size:14px}
+.steps-list li{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--md-surface-var)}
+.steps-list li:last-child{border-bottom:none}
+.steps-list li::before{content:counter(s);counter-increment:s;flex:none;width:26px;height:26px;
+  background:var(--md-primary-container);color:var(--md-on-primary-container);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-top:1px}
+.steps-list{counter-reset:s}
+.result-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.rbtn{padding:14px 8px;font-size:14px;font-weight:500;border:none;background:var(--md-surface-1);
+  color:var(--md-on-surface-var);cursor:pointer;text-align:center;font-family:var(--sans);border-radius:16px}
+.rbtn .kbd{font-size:11px;opacity:.6;margin-left:4px;background:var(--md-surface-3);padding:1px 6px;border-radius:6px}
+.rbtn.pass.active{background:var(--md-pass);color:#fff}
+.rbtn.fail.active{background:var(--md-fail);color:#fff}
+.rbtn.block.active{background:var(--md-block);color:#fff}
+.rbtn.na.active{background:var(--md-na);color:#fff}
+.auto-advance{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--md-on-surface-var);margin:-2px 0 14px}
+.auto-advance input{accent-color:var(--md-primary)}
+.field{display:block;margin-bottom:14px}
+.field-label{display:block;font-size:12px;font-weight:500;color:var(--md-on-surface-var);margin-bottom:6px}
+.field-input{width:100%;padding:12px 14px;border:1px solid var(--md-outline-var);background:var(--md-surface-1);
+  font-size:14px;font-family:var(--sans);color:var(--md-on-surface);resize:vertical;border-radius:12px}
+.field-input:focus{outline:none;border-color:var(--md-primary);border-width:2px;padding:11px 13px}
+.field-input.attn{border-color:var(--md-fail);background:var(--md-fail-container)}
+.field-row.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.evidence{margin-top:14px;padding-top:14px;border-top:1px solid var(--md-surface-var)}
+.evidence-item{color:var(--md-primary);font-size:13px;display:flex;align-items:center;gap:8px;padding:4px 0}
+.evidence-item::before{content:"";width:8px;height:8px;background:var(--md-primary);border-radius:2px}
+.navbar{position:fixed;bottom:0;left:0;right:0;z-index:20;display:flex;align-items:center;
+  justify-content:center;gap:20px;padding:14px 20px;background:var(--md-surface);
+  box-shadow:0 -1px 0 var(--md-outline-var)}
+.btn-nav{background:var(--md-primary-container);color:var(--md-on-primary-container);border:none;
+  font-size:14px;padding:12px 24px;cursor:pointer;font-family:var(--sans);border-radius:999px;font-weight:600}
+.btn-nav:hover{background:#d8c4f5}
+.btn-nav .kbd{font-size:11px;opacity:.6;margin-left:5px}
+.nav-counter{font-size:14px;color:var(--md-on-surface-var)}
+.fab{position:fixed;bottom:90px;right:28px;z-index:21;width:56px;height:56px;border-radius:18px;
+  background:var(--md-primary);color:var(--md-on-primary);border:none;font-size:24px;cursor:pointer;
+  box-shadow:0 4px 12px rgba(103,80,164,.4)}
+@media(min-width:1100px){
+  .card{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:0;align-items:start}
+  .card-side{border-left:1px solid var(--md-surface-var);padding:28px 30px;background:var(--md-surface-1);position:sticky;top:72px;
+    max-height:calc(100vh - 165px);overflow:auto}
+}
+@media(max-width:1099px){.card-side{border-top:1px solid var(--md-surface-var);padding:24px 32px;background:var(--md-surface-1)}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="md-logo">T</div>
+    <span class="brand">测试用例执行器</span>
+    <span class="file-name">IND-1.14.2 工业 ROS 回归用例库.xlsx</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-primary">测试详情</button>
+    <button class="btn">表格视图</button>
+    <select class="select"><option>结果列：R3 回归</option></select>
+    <button class="btn">＋新建列</button>
+    <button class="btn">筛选·2</button>
+    <select class="select"><option>模块：倒车入库</option></select>
+    <button class="btn">下一条未测</button>
+    <button class="btn btn-icon">↓</button>
+    <button class="btn btn-icon">↑</button>
+    <button class="btn btn-icon">?</button>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-bar">
+    <div class="progress-seg" style="width:30%;background:var(--md-pass)"></div>
+    <div class="progress-seg" style="width:8%;background:var(--md-fail)"></div>
+    <div class="progress-seg" style="width:4%;background:var(--md-block)"></div>
+    <div class="progress-seg" style="width:2%;background:var(--md-na)"></div>
+  </div>
+  <span class="progress-text"><b>142</b> / 320 · 44%</span>
+</div>
+
+<main class="main">
+  <section class="card">
+    <div class="card-main">
+      <div class="card-head">
+        <div class="badges">
+          <span class="badge badge-id">IND-1.14.2-DCRK-007</span>
+          <span class="badge">功能</span>
+          <span class="badge p0">P0</span>
+          <span class="badge risk">风险：高</span>
+          <span class="badge">倒车入库</span>
+        </div>
+        <h1 class="case-title">机器人从充电桩自主驶入倒车入库目标位并精准停靠</h1>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">前置条件</h2>
+        <div class="section-body precond">1. 机器人电量 ≥ 80%
+2. 充电桩已归位且网络正常
+3. 入库区无遮挡物，库位线清晰</div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">测试步骤</h2>
+        <ol class="steps-list">
+          <li>在 Web 端选择「倒车入库」任务并下发给机器人</li>
+          <li>观察机器人离桩并向目标库位移动</li>
+          <li>机器人执行倒车对准库位线，速度平滑无急停</li>
+          <li>确认停靠后上报「入库完成」状态</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">预期结果</h2>
+        <div class="section-body expected">1. 机器人 8s 内离桩
+2. 倒车轨迹横向偏差 ≤ 3cm
+3. 最终停靠位姿误差 ≤ 2cm
+4. 状态变更为「已入库」，日志无 ERROR</div>
+      </div>
+    </div>
+
+    <aside class="card-side">
+      <h2 class="section-title">执行结果</h2>
+      <div class="result-buttons">
+        <button class="rbtn pass">通过<span class="kbd">1</span></button>
+        <button class="rbtn fail active">失败<span class="kbd">2</span></button>
+        <button class="rbtn block">阻塞<span class="kbd">3</span></button>
+        <button class="rbtn na">跳过<span class="kbd">4</span></button>
+      </div>
+      <label class="auto-advance"><input type="checkbox" checked> 标记通过/跳过后自动下一条</label>
+
+      <label class="field">
+        <span class="field-label">实际现象 / 结果</span>
+        <textarea class="field-input" rows="3">倒车时横向偏差 6.2cm，超出 3cm 阈值；重定位后二次入库偏差 2.4cm 达标。</textarea>
+      </label>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">发现时间</span>
+          <input class="field-input" value="2026-08-12 21:14:33">
+        </label>
+        <label class="field">
+          <span class="field-label">测试人员</span>
+          <input class="field-input" value="张工">
+        </label>
+      </div>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">BugID</span>
+          <input class="field-input attn" value="KT-2381">
+        </label>
+        <label class="field">
+          <span class="field-label">备注</span>
+          <input class="field-input" value="标定参数">
+        </label>
+      </div>
+      <div class="evidence">
+        <span class="field-label">失败证据</span>
+        <input class="field-input" placeholder="上传截图 / 日志 / 附件">
+        <span class="evidence-item">dock_trace_007.csv · 12 KB</span>
+        <span class="evidence-item">deviation_snapshot.png · 340 KB</span>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<button class="fab" title="下一条">→</button>
+
+<footer class="navbar">
+  <button class="btn-nav">← 上一条<span class="kbd">←</span></button>
+  <span class="nav-counter">7 / 320（筛选中）</span>
+  <button class="btn-nav">下一条 →<span class="kbd">→</span></button>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>测试用例执行器 · UI 风格原型（十种方案）</title>
+<style>
+/* ============================================================
+   页面框架（画廊本身固定为浅色，与原型区分）
+   ============================================================ */
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { background:#EEF1F6; color:#1F2A3D; font-family:"PingFang SC","Microsoft YaHei","Segoe UI",-apple-system,sans-serif; }
+.page { max-width:1280px; margin:0 auto; padding:28px 28px 60px; }
+
+.page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:22px; flex-wrap:wrap; }
+.page-head h1 { font-size:24px; font-weight:700; letter-spacing:.3px; }
+.page-head h1 span { color:#2563EB; }
+.page-head p { margin-top:6px; font-size:13px; color:#6B7A90; line-height:1.6; }
+.page-head .head-hint { font-size:12px; color:#8A97A8; background:#fff; border:1px solid #E1E7F0; padding:6px 12px; border-radius:8px; }
+
+/* ---------- 画廊网格 ---------- */
+.gallery { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:26px; }
+.tile { background:#fff; border:1.5px solid #E1E7F0; border-radius:12px; padding:10px; cursor:pointer; transition:transform .18s, box-shadow .18s, border-color .18s; user-select:none; }
+.tile:hover { transform:translateY(-3px); box-shadow:0 10px 24px rgba(31,58,110,.10); }
+.tile.active { border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.16); }
+.tile.active .tile-name { color:#2563EB; }
+
+.thumb { height:74px; border-radius:8px; overflow:hidden; display:flex; flex-direction:column; border:1px solid rgba(0,0,0,.06); }
+.thumb-top { height:12px; }
+.thumb-progress { height:6px; }
+.thumb-body { flex:1; display:flex; gap:3px; padding:4px; }
+.thumb-main { flex:1.6; border-radius:3px; }
+.thumb-side { flex:1; border-radius:3px; }
+.thumb-foot { height:8px; }
+
+.tile-meta { padding:9px 2px 2px; }
+.tile-row1 { display:flex; align-items:center; gap:8px; }
+.tile-no { font-size:11px; font-weight:700; color:#fff; background:#C4CCD8; border-radius:6px; padding:2px 7px; letter-spacing:.5px; }
+.tile.active .tile-no { background:#2563EB; }
+.tile-name { font-size:14px; font-weight:600; }
+.tile-tags { margin-top:4px; font-size:11px; color:#8A97A8; }
+.tile-swatches { margin-top:6px; display:flex; gap:5px; }
+.tile-swatches i { width:16px; height:16px; border-radius:50%; border:1px solid rgba(0,0,0,.08); }
+
+/* ---------- 舞台（主预览） ---------- */
+.stage { background:#fff; border:1.5px solid #E1E7F0; border-radius:16px; overflow:hidden; box-shadow:0 6px 30px rgba(31,58,110,.08); }
+.stage-head { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 22px; border-bottom:1px solid #EEF1F6; flex-wrap:wrap; }
+.stage-head h2 { font-size:18px; font-weight:700; }
+.stage-head .stage-no { font-size:12px; color:#fff; background:#C4CCD8; border-radius:6px; padding:2px 8px; margin-right:8px; vertical-align:2px; }
+.stage-head p { margin-top:4px; font-size:12.5px; color:#6B7A90; line-height:1.6; max-width:760px; }
+.cost-tag { font-size:12px; font-weight:600; padding:6px 14px; border-radius:20px; white-space:nowrap; }
+.cost-easy { background:#E9F8EF; color:#1E8E4E; border:1px solid #BFE8CF; }
+.cost-mid  { background:#FFF5E0; color:#B8760F; border:1px solid #F2DFAE; }
+.cost-hard { background:#FDEBEC; color:#CE3A43; border:1px solid #F5C4C8; }
+
+.stage-viewport { padding:22px; background:#F4F6FA; overflow-x:auto; }
+.mock { min-width:1020px; border-radius:12px; overflow:hidden; box-shadow:0 18px 50px rgba(15,40,90,.14); }
+
+/* ============================================================
+   原型通用布局（结构骨架，风格只覆盖视觉 token）
+   ============================================================ */
+.mock-topbar { display:flex; align-items:center; gap:10px; padding:10px 16px; }
+.mock-brand { font-weight:700; font-size:14px; display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.mock-brand .file { font-weight:400; font-size:11px; opacity:.75; }
+.mock-brand .dot { width:9px; height:9px; border-radius:50%; }
+.mock-spacer { flex:1; }
+.mtb-group { display:flex; align-items:center; gap:6px; }
+.mtb-btn { font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid transparent; cursor:pointer; white-space:nowrap; }
+.mtb-btn.active { font-weight:600; }
+.mtb-btn.primary { font-weight:600; }
+.mtb-sep { width:1px; height:20px; opacity:.25; margin:0 2px; }
+.mtb-select { font-size:12px; padding:5px 8px; border-radius:6px; cursor:pointer; }
+
+.mock-progress { display:flex; align-items:center; gap:12px; padding:8px 16px; }
+.mock-progress .bar { flex:1; height:8px; border-radius:5px; overflow:hidden; display:flex; background:rgba(127,127,127,.18); }
+.mock-progress .bar i { display:block; height:100%; }
+.mock-progress .pct { font-size:12px; white-space:nowrap; }
+
+.mock-body { display:flex; gap:16px; padding:16px; }
+.mock-main { flex:1; min-width:0; padding:18px 20px; border-radius:10px; }
+.mock-side { width:330px; flex-shrink:0; padding:18px 18px; border-radius:10px; }
+
+.mock-badges { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.mock-badges .bd { font-size:11px; padding:3px 10px; border-radius:5px; font-weight:600; }
+.mock-main h1 { font-size:20px; font-weight:700; margin-bottom:14px; line-height:1.4; }
+.msec { margin-bottom:14px; }
+.msec h2 { font-size:13px; font-weight:600; margin-bottom:7px; display:flex; align-items:center; gap:7px; }
+.msec h2::before { content:""; width:4px; height:13px; border-radius:2px; }
+.msec p, .msec li { font-size:13.5px; line-height:1.85; }
+.msec ol, .msec ul { padding-left:22px; }
+.msec li::marker { font-weight:600; }
+.prec-box { background:rgba(127,127,127,.07); border-radius:8px; padding:10px 14px; }
+
+.mock-side h2 { font-size:13px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:7px; }
+.mock-side h2::before { content:""; width:4px; height:13px; border-radius:2px; }
+.rbtns { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+.rbtns button { font-size:13px; font-weight:600; padding:10px 0; border-radius:8px; cursor:pointer; border:1.5px solid transparent; transition:transform .12s; }
+.rbtns button:hover { transform:translateY(-1px); }
+.rbtns kbd { font-family:inherit; font-size:10px; opacity:.6; margin-left:4px; }
+.sfield { margin-bottom:12px; }
+.sfield label { display:block; font-size:11px; font-weight:600; margin-bottom:5px; }
+.sfield input, .sfield textarea { width:100%; font-size:12.5px; padding:8px 10px; border-radius:7px; border:1px solid; font-family:inherit; resize:none; }
+.sfield-row { display:flex; gap:10px; }
+.sfield-row .sfield { flex:1; }
+.auto-line { display:flex; align-items:center; gap:7px; font-size:12px; margin-bottom:12px; }
+.auto-line input { accent-color:currentColor; }
+
+.mock-nav { display:flex; align-items:center; justify-content:center; gap:18px; padding:10px 16px; }
+.mock-nav .nav-btn { font-size:12.5px; padding:6px 16px; border-radius:7px; cursor:pointer; border:1px solid; }
+.mock-nav .nav-btn kbd { font-family:inherit; font-size:10px; opacity:.6; margin-left:3px; }
+.mock-nav .counter { font-size:12px; font-weight:600; }
+
+/* ============================================================
+   S1 经典企业蓝 Enterprise Blue
+   ============================================================ */
+.t1 .thumb { background:#F3F6FB; }
+.t1 .thumb-top { background:#FFFFFF; border-bottom:1px solid #E4E9F2; }
+.t1 .thumb-top::after { content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#2563EB; border-radius:2px; }
+.t1 .thumb-progress { background:#E7ECF5; }
+.t1 .thumb-main { background:#FFFFFF; border:1px solid #E4E9F2; }
+.t1 .thumb-side { background:#FFFFFF; border:1px solid #E4E9F2; }
+.t1 .thumb-foot { background:#F3F6FB; }
+.t1 .tile-swatches i:nth-child(1){ background:#2563EB; } .t1 .tile-swatches i:nth-child(2){ background:#EAF1FE; } .t1 .tile-swatches i:nth-child(3){ background:#F3F6FB; }
+
+.mock.s1 { background:#F3F6FB; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s1 .mock-topbar { background:#FFFFFF; border-bottom:1px solid #E1E7F0; }
+.mock.s1 .mock-brand { color:#1F2A3D; } .mock.s1 .mock-brand .dot { background:#2563EB; }
+.mock.s1 .mtb-btn { background:transparent; color:#4B5A70; }
+.mock.s1 .mtb-btn:hover { background:#F3F6FB; }
+.mock.s1 .mtb-btn.active { background:#EAF1FE; color:#1D4ED8; }
+.mock.s1 .mtb-btn.primary { background:#2563EB; color:#fff; box-shadow:0 2px 8px rgba(37,99,235,.3); }
+.mock.s1 .mtb-btn.primary:hover { background:#1D4ED8; }
+.mock.s1 .mtb-select { border:1px solid #D8DFEA; background:#fff; color:#33405A; }
+.mock.s1 .mtb-sep { background:#D8DFEA; }
+.mock.s1 .mock-progress { background:#FFFFFF; border-bottom:1px solid #EFF3F9; }
+.mock.s1 .mock-progress .bar i.pass{ background:#22A55E; } .mock.s1 .mock-progress .bar i.fail{ background:#E5484D; }
+.mock.s1 .mock-progress .bar i.block{ background:#F5A524; } .mock.s1 .mock-progress .bar i.na{ background:#B8C2D0; }
+.mock.s1 .mock-progress .pct { color:#5A6B84; }
+.mock.s1 .mock-main { background:#FFFFFF; box-shadow:0 1px 3px rgba(31,58,110,.07); }
+.mock.s1 .bd { background:#EEF2F8; color:#3E4E66; }
+.mock.s1 .bd.id { background:#E8F0FE; color:#1D4ED8; font-family:Consolas,monospace; }
+.mock.s1 .bd.kind { background:#F0F7F3; color:#1E8E4E; }
+.mock.s1 .bd.p0 { background:#FDECEC; color:#CE3A43; }
+.mock.s1 .bd.p1 { background:#FFF5E0; color:#B8760F; }
+.mock.s1 .bd.p2 { background:#F5F7F2; color:#8A8F98; }
+.mock.s1 .bd.risk { background:#FFF1E0; color:#D97706; }
+.mock.s1 .bd.module { background:#EFE9FB; color:#6D3FD6; }
+.mock.s1 .msec h2 { color:#33405A; } .mock.s1 .msec h2::before { background:#2563EB; }
+.mock.s1 .msec li::marker { color:#2563EB; }
+.mock.s1 .mock-side { background:#FFFFFF; box-shadow:0 1px 3px rgba(31,58,110,.07); }
+.mock.s1 .mock-side h2 { color:#33405A; } .mock.s1 .mock-side h2::before { background:#2563EB; }
+.mock.s1 .rbtns .pass{ background:#E9F8EF; color:#1E8E4E; border-color:#BFE8CF; }
+.mock.s1 .rbtns .fail{ background:#FDECEC; color:#CE3A43; border-color:#F5C4C8; }
+.mock.s1 .rbtns .block{ background:#FFF5E0; color:#B8760F; border-color:#F2DFAE; }
+.mock.s1 .rbtns .na{ background:#F2F4F8; color:#6B7A90; border-color:#E2E7EF; }
+.mock.s1 .rbtns .active{ outline:2px solid currentColor; outline-offset:1px; }
+.mock.s1 .sfield label { color:#5A6B84; }
+.mock.s1 .sfield input, .mock.s1 .sfield textarea { border-color:#D8DFEA; background:#FBFCFE; color:#1F2A3D; }
+.mock.s1 .sfield input:focus, .mock.s1 .sfield textarea:focus { outline:2px solid rgba(37,99,235,.25); border-color:#2563EB; }
+.mock.s1 .mock-nav { background:#FFFFFF; border-top:1px solid #E1E7F0; }
+.mock.s1 .nav-btn { background:#fff; border-color:#D8DFEA; color:#33405A; }
+.mock.s1 .nav-btn:hover { border-color:#2563EB; color:#2563EB; }
+.mock.s1 .counter { color:#5A6B84; }
+
+/* ============================================================
+   S2 深色夜间 Dark Pro
+   ============================================================ */
+.t2 .thumb { background:#0F1218; }
+.t2 .thumb-top { background:#161C26; } .t2 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#5B8CFF; border-radius:2px; }
+.t2 .thumb-progress { background:#232B38; }
+.t2 .thumb-main { background:#171C26; border:1px solid #262E3B; }
+.t2 .thumb-side { background:#171C26; border:1px solid #262E3B; }
+.t2 .thumb-foot { background:#10141C; }
+.t2 .tile-swatches i:nth-child(1){ background:#5B8CFF; } .t2 .tile-swatches i:nth-child(2){ background:#171C26; } .t2 .tile-swatches i:nth-child(3){ background:#0F1218; }
+
+.mock.s2 { background:#0F1218; color:#E6EAF2; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s2 .mock-topbar { background:#131821; border-bottom:1px solid #232B38; }
+.mock.s2 .mock-brand { color:#E6EAF2; } .mock.s2 .mock-brand .dot { background:#5B8CFF; }
+.mock.s2 .mtb-btn { color:#9AA6B8; }
+.mock.s2 .mtb-btn:hover { background:#1C2430; color:#E6EAF2; }
+.mock.s2 .mtb-btn.active { background:#1E2A44; color:#7FA8FF; }
+.mock.s2 .mtb-btn.primary { background:#3B6FE0; color:#fff; box-shadow:0 2px 10px rgba(59,111,224,.35); }
+.mock.s2 .mtb-select { background:#131821; border:1px solid #2C3543; color:#C6CFDC; }
+.mock.s2 .mtb-sep { background:#2C3543; }
+.mock.s2 .mock-progress { background:#11151D; border-bottom:1px solid #1E2530; }
+.mock.s2 .mock-progress .bar { background:#232B38; }
+.mock.s2 .mock-progress .bar i.pass{ background:#2FBF71; } .mock.s2 .mock-progress .bar i.fail{ background:#F0524D; }
+.mock.s2 .mock-progress .bar i.block{ background:#E8A13A; } .mock.s2 .mock-progress .bar i.na{ background:#3A4454; }
+.mock.s2 .mock-progress .pct { color:#8B96A8; }
+.mock.s2 .mock-main { background:#171C26; border:1px solid #262E3B; }
+.mock.s2 .bd { background:#232B38; color:#C6CFDC; }
+.mock.s2 .bd.id { background:#1E2A44; color:#7FA8FF; font-family:Consolas,monospace; }
+.mock.s2 .bd.kind { background:#173327; color:#4ADE80; }
+.mock.s2 .bd.p0 { background:#3A1F22; color:#FF8A87; }
+.mock.s2 .bd.p1 { background:#3A2E16; color:#F0C75E; }
+.mock.s2 .bd.p2 { background:#232B38; color:#9AA6B8; }
+.mock.s2 .bd.risk { background:#3A2A15; color:#F5A524; }
+.mock.s2 .bd.module { background:#2A2140; color:#B49AFF; }
+.mock.s2 .msec h2 { color:#C6CFDC; } .mock.s2 .msec h2::before { background:#5B8CFF; }
+.mock.s2 .msec li::marker { color:#5B8CFF; }
+.mock.s2 .prec-box { background:#1C2430; }
+.mock.s2 .mock-side { background:#171C26; border:1px solid #262E3B; }
+.mock.s2 .mock-side h2 { color:#C6CFDC; } .mock.s2 .mock-side h2::before { background:#5B8CFF; }
+.mock.s2 .rbtns .pass{ background:#14321F; color:#4ADE80; border-color:#1F4A32; }
+.mock.s2 .rbtns .fail{ background:#33191C; color:#FF8A87; border-color:#4A2429; }
+.mock.s2 .rbtns .block{ background:#33290F; color:#F0C75E; border-color:#4A3D17; }
+.mock.s2 .rbtns .na{ background:#1C2430; color:#8B96A8; border-color:#2C3543; }
+.mock.s2 .rbtns .active{ outline:2px solid currentColor; outline-offset:1px; }
+.mock.s2 .sfield label { color:#8B96A8; }
+.mock.s2 .sfield input, .mock.s2 .sfield textarea { background:#10141C; border-color:#2C3543; color:#E6EAF2; }
+.mock.s2 .sfield input:focus, .mock.s2 .sfield textarea:focus { outline:2px solid rgba(91,140,255,.3); border-color:#5B8CFF; }
+.mock.s2 .mock-nav { background:#11151D; border-top:1px solid #232B38; }
+.mock.s2 .nav-btn { background:#131821; border-color:#2C3543; color:#C6CFDC; }
+.mock.s2 .nav-btn:hover { border-color:#5B8CFF; color:#7FA8FF; }
+.mock.s2 .counter { color:#8B96A8; }
+
+/* ============================================================
+   S3 极简黑白 Minimal Mono
+   ============================================================ */
+.t3 .thumb { background:#FAFAFA; }
+.t3 .thumb-top { background:#FFFFFF; border-bottom:1px solid #111; } .t3 .thumb-top::after{ content:""; display:block; width:34%; height:4px; margin:4px 4px; background:#111; }
+.t3 .thumb-progress { background:#EFEFEF; }
+.t3 .thumb-main { background:#FFFFFF; border:1px solid #E8E8E8; }
+.t3 .thumb-side { background:#FFFFFF; border:1px solid #E8E8E8; }
+.t3 .thumb-foot { background:#FAFAFA; border-top:1px solid #111; }
+.t3 .tile-swatches i:nth-child(1){ background:#111; } .t3 .tile-swatches i:nth-child(2){ background:#fff; border-color:#bbb; } .t3 .tile-swatches i:nth-child(3){ background:#E8E8E8; }
+
+.mock.s3 { background:#FAFAFA; color:#111; font-family:"Inter","PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s3 .mock-topbar { background:#FFFFFF; border-bottom:1px solid #111; padding:12px 16px; }
+.mock.s3 .mock-brand { letter-spacing:.2px; } .mock.s3 .mock-brand .dot { background:#111; }
+.mock.s3 .mtb-btn { color:#333; border-radius:0; border-bottom:2px solid transparent; padding:6px 12px; }
+.mock.s3 .mtb-btn:hover { color:#000; }
+.mock.s3 .mtb-btn.active { color:#000; border-bottom-color:#111; }
+.mock.s3 .mtb-btn.primary { background:#111; color:#fff; border-radius:0; }
+.mock.s3 .mtb-btn.primary:hover { background:#000; }
+.mock.s3 .mtb-select { border:1px solid #ccc; background:#fff; color:#111; border-radius:0; }
+.mock.s3 .mtb-sep { background:#ccc; }
+.mock.s3 .mock-progress { background:#FFFFFF; border-bottom:1px solid #E8E8E8; }
+.mock.s3 .mock-progress .bar { background:#EFEFEF; border-radius:0; }
+.mock.s3 .mock-progress .bar i.pass{ background:#444; } .mock.s3 .mock-progress .bar i.fail{ background:#111; }
+.mock.s3 .mock-progress .bar i.block{ background:#888; } .mock.s3 .mock-progress .bar i.na{ background:#D8D8D8; }
+.mock.s3 .mock-progress .pct { color:#555; font-variant-numeric:tabular-nums; }
+.mock.s3 .mock-main { background:#FFFFFF; border:1px solid #E8E8E8; border-radius:0; }
+.mock.s3 .bd { background:#F2F2F2; color:#333; border-radius:0; border:1px solid #E8E8E8; font-family:"SF Mono",Consolas,monospace; }
+.mock.s3 .bd.id { background:#111; color:#fff; font-family:Consolas,monospace; }
+.mock.s3 .bd.p0 { background:#111; color:#fff; } .mock.s3 .bd.p1 { background:#F2F2F2; color:#111; }
+.mock.s3 .bd.p2 { background:#FAFAFA; color:#666; } .mock.s3 .bd.risk { background:#F2F2F2; color:#111; }
+.mock.s3 .bd.module { background:#F2F2F2; color:#111; }
+.mock.s3 .msec h2 { color:#000; } .mock.s3 .msec h2::before { background:#111; border-radius:0; }
+.mock.s3 .msec li::marker { color:#111; }
+.mock.s3 .prec-box { background:#F5F5F5; border-left:3px solid #111; border-radius:0; }
+.mock.s3 .mock-side { background:#FFFFFF; border:1px solid #E8E8E8; border-radius:0; }
+.mock.s3 .mock-side h2 { color:#000; } .mock.s3 .mock-side h2::before { background:#111; border-radius:0; }
+.mock.s3 .rbtns .pass{ background:#fff; color:#111; border-color:#111; border-radius:0; }
+.mock.s3 .rbtns .fail{ background:#fff; color:#111; border-color:#111; border-radius:0; }
+.mock.s3 .rbtns .block{ background:#fff; color:#111; border-color:#bbb; border-radius:0; }
+.mock.s3 .rbtns .na{ background:#fff; color:#888; border-color:#ddd; border-radius:0; }
+.mock.s3 .rbtns .active{ background:#111; color:#fff; }
+.mock.s3 .rbtns .na.active{ background:#555; color:#fff; }
+.mock.s3 .sfield label { color:#555; font-family:"SF Mono",Consolas,monospace; }
+.mock.s3 .sfield input, .mock.s3 .sfield textarea { border-color:#ccc; background:#fff; color:#111; border-radius:0; }
+.mock.s3 .sfield input:focus, .mock.s3 .sfield textarea:focus { outline:1px solid #111; }
+.mock.s3 .mock-nav { background:#FFFFFF; border-top:1px solid #111; }
+.mock.s3 .nav-btn { background:#fff; border-color:#111; color:#111; border-radius:0; }
+.mock.s3 .nav-btn:hover { background:#111; color:#fff; }
+.mock.s3 .counter { color:#555; font-variant-numeric:tabular-nums; }
+
+/* ============================================================
+   S4 玻璃拟态 Glassmorphism
+   ============================================================ */
+.t4 .thumb { background:linear-gradient(135deg,#DCE9F7,#F3E8FF 55%,#E0F6EE); }
+.t4 .thumb-top { background:rgba(255,255,255,.6); backdrop-filter:blur(2px); } .t4 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#7C5CFF; border-radius:3px; }
+.t4 .thumb-progress { background:rgba(255,255,255,.55); }
+.t4 .thumb-main { background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); }
+.t4 .thumb-side { background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); }
+.t4 .thumb-foot { background:rgba(255,255,255,.4); }
+.t4 .tile-swatches i:nth-child(1){ background:#7C5CFF; } .t4 .tile-swatches i:nth-child(2){ background:rgba(255,255,255,.8); } .t4 .tile-swatches i:nth-child(3){ background:#B3E5FC; }
+
+.mock.s4 { background:linear-gradient(135deg,#DCE9F7 0%,#F0E6FB 45%,#E0F6EE 100%); font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s4 .mock-topbar { background:rgba(255,255,255,.45); backdrop-filter:blur(20px); border-bottom:1px solid rgba(255,255,255,.65); }
+.mock.s4 .mock-brand { color:#2A3350; } .mock.s4 .mock-brand .dot { background:#7C5CFF; }
+.mock.s4 .mtb-btn { color:#3A4466; }
+.mock.s4 .mtb-btn:hover { background:rgba(255,255,255,.55); }
+.mock.s4 .mtb-btn.active { background:rgba(124,92,255,.15); color:#5B3FD4; }
+.mock.s4 .mtb-btn.primary { background:rgba(124,92,255,.92); color:#fff; box-shadow:0 8px 22px rgba(124,92,255,.35); }
+.mock.s4 .mtb-select { background:rgba(255,255,255,.7); border:1px solid rgba(255,255,255,.8); color:#2A3350; }
+.mock.s4 .mtb-sep { background:rgba(255,255,255,.7); }
+.mock.s4 .mock-progress { background:rgba(255,255,255,.38); backdrop-filter:blur(10px); border-bottom:1px solid rgba(255,255,255,.5); }
+.mock.s4 .mock-progress .bar { background:rgba(255,255,255,.6); }
+.mock.s4 .mock-progress .bar i.pass{ background:#34C77B; } .mock.s4 .mock-progress .bar i.fail{ background:#FF5D73; }
+.mock.s4 .mock-progress .bar i.block{ background:#FFB23E; } .mock.s4 .mock-progress .bar i.na{ background:rgba(120,130,160,.35); }
+.mock.s4 .mock-progress .pct { color:#55607F; }
+.mock.s4 .mock-main { background:rgba(255,255,255,.55); backdrop-filter:blur(18px); border:1px solid rgba(255,255,255,.75); border-radius:16px; box-shadow:0 8px 32px rgba(90,80,160,.12); }
+.mock.s4 .bd { background:rgba(255,255,255,.6); color:#3A4466; }
+.mock.s4 .bd.id { background:rgba(124,92,255,.16); color:#5B3FD4; font-family:Consolas,monospace; }
+.mock.s4 .bd.kind { background:rgba(52,199,123,.14); color:#1E8E4E; }
+.mock.s4 .bd.p0 { background:rgba(255,93,115,.13); color:#D63A54; }
+.mock.s4 .bd.p1 { background:rgba(255,178,62,.18); color:#B8760F; }
+.mock.s4 .bd.p2 { background:rgba(120,130,160,.12); color:#6B7590; }
+.mock.s4 .bd.risk { background:rgba(255,150,60,.15); color:#D97706; }
+.mock.s4 .bd.module { background:rgba(124,92,255,.12); color:#6D3FD6; }
+.mock.s4 .msec h2 { color:#2A3350; } .mock.s4 .msec h2::before { background:#7C5CFF; }
+.mock.s4 .msec li::marker { color:#7C5CFF; }
+.mock.s4 .prec-box { background:rgba(255,255,255,.4); border:1px solid rgba(255,255,255,.6); }
+.mock.s4 .mock-side { background:rgba(255,255,255,.55); backdrop-filter:blur(18px); border:1px solid rgba(255,255,255,.75); border-radius:16px; box-shadow:0 8px 32px rgba(90,80,160,.12); }
+.mock.s4 .mock-side h2 { color:#2A3350; } .mock.s4 .mock-side h2::before { background:#7C5CFF; }
+.mock.s4 .rbtns .pass{ background:rgba(52,199,123,.16); color:#17935C; border-color:rgba(52,199,123,.35); }
+.mock.s4 .rbtns .fail{ background:rgba(255,93,115,.14); color:#D63A54; border-color:rgba(255,93,115,.35); }
+.mock.s4 .rbtns .block{ background:rgba(255,178,62,.2); color:#B8760F; border-color:rgba(255,178,62,.4); }
+.mock.s4 .rbtns .na{ background:rgba(120,130,160,.1); color:#6B7590; border-color:rgba(120,130,160,.22); }
+.mock.s4 .rbtns .active{ box-shadow:0 6px 16px rgba(90,80,160,.18); transform:translateY(-1px); }
+.mock.s4 .sfield label { color:#55607F; }
+.mock.s4 .sfield input, .mock.s4 .sfield textarea { background:rgba(255,255,255,.65); border-color:rgba(255,255,255,.85); color:#2A3350; }
+.mock.s4 .sfield input:focus, .mock.s4 .sfield textarea:focus { outline:2px solid rgba(124,92,255,.3); }
+.mock.s4 .mock-nav { background:rgba(255,255,255,.4); backdrop-filter:blur(10px); border-top:1px solid rgba(255,255,255,.55); }
+.mock.s4 .nav-btn { background:rgba(255,255,255,.65); border-color:rgba(255,255,255,.9); color:#2A3350; }
+.mock.s4 .nav-btn:hover { background:rgba(124,92,255,.18); }
+.mock.s4 .counter { color:#55607F; }
+
+/* ============================================================
+   S5 渐变科技 Gradient Tech
+   ============================================================ */
+.t5 .thumb { background:linear-gradient(135deg,#0B1026,#141B3E); }
+.t5 .thumb-top { background:rgba(20,27,62,.9); border-bottom:1px solid rgba(0,212,255,.3); } .t5 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:linear-gradient(90deg,#00D4FF,#7C5CFF); border-radius:3px; }
+.t5 .thumb-progress { background:rgba(255,255,255,.08); }
+.t5 .thumb-main { background:rgba(255,255,255,.06); border:1px solid rgba(0,212,255,.25); }
+.t5 .thumb-side { background:rgba(255,255,255,.06); border:1px solid rgba(124,92,255,.3); }
+.t5 .thumb-foot { background:rgba(10,14,32,.9); }
+.t5 .tile-swatches i:nth-child(1){ background:#00D4FF; } .t5 .tile-swatches i:nth-child(2){ background:#7C5CFF; } .t5 .tile-swatches i:nth-child(3){ background:#0B1026; }
+
+.mock.s5 { background:linear-gradient(150deg,#0B1026 0%,#111839 55%,#0D1B33 100%); color:#DCE6FF; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s5 .mock-topbar { background:rgba(16,22,50,.85); border-bottom:1px solid rgba(0,212,255,.22); }
+.mock.s5 .mock-brand { color:#EAF2FF; background:linear-gradient(90deg,#00D4FF,#7C5CFF); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.mock.s5 .mock-brand .dot { background:#00D4FF; box-shadow:0 0 8px #00D4FF; }
+.mock.s5 .mtb-btn { color:#9FB0D9; }
+.mock.s5 .mtb-btn:hover { color:#fff; background:rgba(0,212,255,.08); }
+.mock.s5 .mtb-btn.active { color:#6BE3FF; background:rgba(0,212,255,.14); box-shadow:inset 0 0 0 1px rgba(0,212,255,.4); }
+.mock.s5 .mtb-btn.primary { background:linear-gradient(90deg,#00D4FF,#7C5CFF); color:#04121F; font-weight:700; box-shadow:0 4px 18px rgba(0,212,255,.4); }
+.mock.s5 .mtb-select { background:rgba(16,22,50,.9); border:1px solid rgba(0,212,255,.3); color:#C6D6F5; }
+.mock.s5 .mtb-sep { background:rgba(0,212,255,.3); }
+.mock.s5 .mock-progress { background:rgba(13,18,42,.7); border-bottom:1px solid rgba(124,92,255,.25); }
+.mock.s5 .mock-progress .bar { background:rgba(255,255,255,.1); }
+.mock.s5 .mock-progress .bar i.pass{ background:linear-gradient(90deg,#00E5A0,#00D4FF); } .mock.s5 .mock-progress .bar i.fail{ background:linear-gradient(90deg,#FF5D8F,#FF2E9A); }
+.mock.s5 .mock-progress .bar i.block{ background:linear-gradient(90deg,#FFB23E,#FF7A3E); } .mock.s5 .mock-progress .bar i.na{ background:rgba(140,155,200,.3); }
+.mock.s5 .mock-progress .pct { color:#8FA2D0; }
+.mock.s5 .mock-main { background:rgba(255,255,255,.05); border:1px solid rgba(0,212,255,.22); border-radius:12px; box-shadow:0 0 0 1px rgba(124,92,255,.08), 0 10px 40px rgba(0,0,0,.35); }
+.mock.s5 .bd { background:rgba(255,255,255,.07); color:#B9C8EC; border:1px solid rgba(255,255,255,.1); }
+.mock.s5 .bd.id { background:rgba(0,212,255,.13); color:#6BE3FF; border-color:rgba(0,212,255,.35); font-family:Consolas,monospace; }
+.mock.s5 .bd.kind { background:rgba(0,229,160,.12); color:#4DF0BE; border-color:rgba(0,229,160,.3); }
+.mock.s5 .bd.p0 { background:rgba(255,46,154,.14); color:#FF7AB8; border-color:rgba(255,46,154,.4); }
+.mock.s5 .bd.p1 { background:rgba(255,178,62,.13); color:#FFC966; border-color:rgba(255,178,62,.35); }
+.mock.s5 .bd.p2 { background:rgba(140,155,200,.12); color:#9FB0D9; border-color:rgba(140,155,200,.25); }
+.mock.s5 .bd.risk { background:rgba(255,122,62,.12); color:#FFA366; border-color:rgba(255,122,62,.35); }
+.mock.s5 .bd.module { background:rgba(124,92,255,.15); color:#B49AFF; border-color:rgba(124,92,255,.4); }
+.mock.s5 .msec h2 { color:#C6D6F5; } .mock.s5 .msec h2::before { background:linear-gradient(180deg,#00D4FF,#7C5CFF); }
+.mock.s5 .msec li::marker { color:#00D4FF; }
+.mock.s5 .prec-box { background:rgba(0,212,255,.06); border:1px solid rgba(0,212,255,.18); }
+.mock.s5 .mock-side { background:rgba(255,255,255,.05); border:1px solid rgba(124,92,255,.25); border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,.35); }
+.mock.s5 .mock-side h2 { color:#C6D6F5; } .mock.s5 .mock-side h2::before { background:linear-gradient(180deg,#7C5CFF,#00D4FF); }
+.mock.s5 .rbtns .pass{ background:rgba(0,229,160,.1); color:#4DF0BE; border-color:rgba(0,229,160,.4); }
+.mock.s5 .rbtns .fail{ background:rgba(255,46,154,.1); color:#FF7AB8; border-color:rgba(255,46,154,.45); }
+.mock.s5 .rbtns .block{ background:rgba(255,178,62,.1); color:#FFC966; border-color:rgba(255,178,62,.4); }
+.mock.s5 .rbtns .na{ background:rgba(140,155,200,.08); color:#8FA2D0; border-color:rgba(140,155,200,.25); }
+.mock.s5 .rbtns .active{ box-shadow:0 0 16px rgba(0,212,255,.45), inset 0 0 8px rgba(0,212,255,.12); transform:translateY(-1px); }
+.mock.s5 .sfield label { color:#8FA2D0; }
+.mock.s5 .sfield input, .mock.s5 .sfield textarea { background:rgba(10,14,32,.7); border-color:rgba(0,212,255,.25); color:#DCE6FF; }
+.mock.s5 .sfield input:focus, .mock.s5 .sfield textarea:focus { outline:none; border-color:#00D4FF; box-shadow:0 0 0 2px rgba(0,212,255,.2); }
+.mock.s5 .mock-nav { background:rgba(13,18,42,.8); border-top:1px solid rgba(0,212,255,.22); }
+.mock.s5 .nav-btn { background:rgba(255,255,255,.05); border-color:rgba(0,212,255,.35); color:#9FD8F0; }
+.mock.s5 .nav-btn:hover { color:#04121F; background:linear-gradient(90deg,#00D4FF,#7C5CFF); border-color:transparent; }
+.mock.s5 .counter { color:#8FA2D0; }
+
+/* ============================================================
+   S6 新拟态 Neumorphism
+   ============================================================ */
+.t6 .thumb { background:#E0E5EC; }
+.t6 .thumb-top { background:#E0E5EC; box-shadow:inset 2px 2px 5px rgba(163,177,198,.6), inset -2px -2px 5px #FFFFFF; } .t6 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#3E7BFA; border-radius:3px; }
+.t6 .thumb-progress { background:#E0E5EC; box-shadow:inset 2px 2px 4px rgba(163,177,198,.5); }
+.t6 .thumb-main { background:#E0E5EC; box-shadow:6px 6px 12px rgba(163,177,198,.7), -6px -6px 12px #FFFFFF; }
+.t6 .thumb-side { background:#E0E5EC; box-shadow:6px 6px 12px rgba(163,177,198,.7), -6px -6px 12px #FFFFFF; }
+.t6 .thumb-foot { background:#E0E5EC; box-shadow:inset 2px 2px 4px rgba(163,177,198,.5); }
+.t6 .tile-swatches i:nth-child(1){ background:#3E7BFA; } .t6 .tile-swatches i:nth-child(2){ background:#E0E5EC; border-color:#b9c3d4; } .t6 .tile-swatches i:nth-child(3){ background:#FFFFFF; }
+
+.mock.s6 { background:#E0E5EC; color:#3A4460; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s6 .mock-topbar { background:#E0E5EC; }
+.mock.s6 .mock-brand { color:#3A4460; } .mock.s6 .mock-brand .dot { background:#3E7BFA; box-shadow:0 2px 6px rgba(62,123,250,.5); }
+.mock.s6 .mtb-btn { color:#5A6B8C; border-radius:10px; box-shadow:4px 4px 8px rgba(163,177,198,.6), -4px -4px 8px #FFFFFF; }
+.mock.s6 .mtb-btn:hover { color:#3E7BFA; }
+.mock.s6 .mtb-btn.active { color:#3E7BFA; box-shadow:inset 3px 3px 6px rgba(163,177,198,.6), inset -3px -3px 6px #FFFFFF; }
+.mock.s6 .mtb-btn.primary { background:linear-gradient(145deg,#4C88FF,#3066E0); color:#fff; box-shadow:5px 5px 12px rgba(163,177,198,.7), -5px -5px 12px #FFFFFF; }
+.mock.s6 .mtb-select { background:#E0E5EC; border:none; color:#3A4460; border-radius:10px; box-shadow:inset 2px 2px 5px rgba(163,177,198,.55), inset -2px -2px 5px #FFFFFF; }
+.mock.s6 .mtb-sep { background:rgba(163,177,198,.4); }
+.mock.s6 .mock-progress { background:#E0E5EC; }
+.mock.s6 .mock-progress .bar { background:#D3D9E3; box-shadow:inset 2px 2px 4px rgba(163,177,198,.6), inset -1px -1px 3px #FFFFFF; }
+.mock.s6 .mock-progress .bar i.pass{ background:linear-gradient(90deg,#38C172,#3E7BFA); } .mock.s6 .mock-progress .bar i.fail{ background:#F26B6B; }
+.mock.s6 .mock-progress .bar i.block{ background:#F5B454; } .mock.s6 .mock-progress .bar i.na{ background:#AEB9CC; }
+.mock.s6 .mock-progress .pct { color:#5A6B8C; }
+.mock.s6 .mock-main { background:#E0E5EC; border-radius:18px; box-shadow:8px 8px 18px rgba(163,177,198,.7), -8px -8px 18px #FFFFFF; }
+.mock.s6 .bd { background:#E0E5EC; color:#5A6B8C; box-shadow:3px 3px 6px rgba(163,177,198,.55), -3px -3px 6px #FFFFFF; }
+.mock.s6 .bd.id { color:#3E7BFA; font-family:Consolas,monospace; }
+.mock.s6 .bd.p0 { color:#E05555; } .mock.s6 .bd.p1 { color:#C98A1B; } .mock.s6 .bd.p2 { color:#7C88A0; }
+.mock.s6 .bd.risk { color:#D97706; } .mock.s6 .bd.module { color:#6D3FD6; }
+.mock.s6 .msec h2 { color:#3A4460; } .mock.s6 .msec h2::before { background:#3E7BFA; }
+.mock.s6 .msec li::marker { color:#3E7BFA; }
+.mock.s6 .prec-box { background:#DADFEA; box-shadow:inset 2px 2px 6px rgba(163,177,198,.5); border-radius:12px; }
+.mock.s6 .mock-side { background:#E0E5EC; border-radius:18px; box-shadow:8px 8px 18px rgba(163,177,198,.7), -8px -8px 18px #FFFFFF; }
+.mock.s6 .mock-side h2 { color:#3A4460; } .mock.s6 .mock-side h2::before { background:#3E7BFA; }
+.mock.s6 .rbtns button { border:none; box-shadow:5px 5px 10px rgba(163,177,198,.65), -5px -5px 10px #FFFFFF; }
+.mock.s6 .rbtns .pass{ color:#1E9E54; background:#E0E5EC; } .mock.s6 .rbtns .fail{ color:#E05555; background:#E0E5EC; }
+.mock.s6 .rbtns .block{ color:#C98A1B; background:#E0E5EC; } .mock.s6 .rbtns .na{ color:#7C88A0; background:#E0E5EC; }
+.mock.s6 .rbtns .active{ box-shadow:inset 4px 4px 8px rgba(163,177,198,.65), inset -4px -4px 8px #FFFFFF; transform:translateY(0); }
+.mock.s6 .sfield label { color:#5A6B8C; }
+.mock.s6 .sfield input, .mock.s6 .sfield textarea { background:#E0E5EC; border:none; color:#3A4460; box-shadow:inset 3px 3px 7px rgba(163,177,198,.6), inset -3px -3px 7px #FFFFFF; border-radius:12px; }
+.mock.s6 .sfield input:focus, .mock.s6 .sfield textarea:focus { outline:none; color:#2A3350; }
+.mock.s6 .mock-nav { background:#E0E5EC; }
+.mock.s6 .nav-btn { border:none; color:#3A4460; background:#E0E5EC; box-shadow:5px 5px 10px rgba(163,177,198,.65), -5px -5px 10px #FFFFFF; border-radius:10px; }
+.mock.s6 .nav-btn:hover { color:#3E7BFA; }
+.mock.s6 .counter { color:#5A6B8C; }
+
+/* ============================================================
+   S7 数据表格风 Data Dense
+   ============================================================ */
+.t7 .thumb { background:#F7F8FA; }
+.t7 .thumb-top { background:#F0F2F6; border-bottom:1px solid #DDE2EA; } .t7 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#3B6FB8; border-radius:1px; }
+.t7 .thumb-progress { background:#E6EAF0; }
+.t7 .thumb-main { background:#FFFFFF; border:1px solid #DDE2EA; }
+.t7 .thumb-side { background:#FFFFFF; border:1px solid #DDE2EA; }
+.t7 .thumb-foot { background:#F0F2F6; border-top:1px solid #DDE2EA; }
+.t7 .tile-swatches i:nth-child(1){ background:#3B6FB8; } .t7 .tile-swatches i:nth-child(2){ background:#F0F2F6; } .t7 .tile-swatches i:nth-child(3){ background:#FFFFFF; }
+
+.mock.s7 { background:#F7F8FA; color:#1E2633; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s7 .mock-topbar { background:#FFFFFF; border-bottom:1px solid #DDE2EA; }
+.mock.s7 .mock-brand { color:#1E2633; font-size:13px; } .mock.s7 .mock-brand .dot { background:#3B6FB8; }
+.mock.s7 .mtb-btn { color:#4A5568; border:1px solid #DDE2EA; background:#fff; font-size:11.5px; padding:4px 9px; }
+.mock.s7 .mtb-btn:hover { background:#F0F2F6; }
+.mock.s7 .mtb-btn.active { background:#3B6FB8; color:#fff; border-color:#3B6FB8; }
+.mock.s7 .mtb-btn.primary { background:#3B6FB8; color:#fff; border-color:#3B6FB8; }
+.mock.s7 .mtb-select { border:1px solid #DDE2EA; background:#fff; color:#333; font-size:11.5px; }
+.mock.s7 .mtb-sep { background:#DDE2EA; }
+.mock.s7 .mock-progress { background:#FFFFFF; border-bottom:1px solid #DDE2EA; }
+.mock.s7 .mock-progress .bar { background:#EDF0F4; height:6px; }
+.mock.s7 .mock-progress .bar i.pass{ background:#1E9E54; } .mock.s7 .mock-progress .bar i.fail{ background:#D64545; }
+.mock.s7 .mock-progress .bar i.block{ background:#D99A1E; } .mock.s7 .mock-progress .bar i.na{ background:#B9C2CE; }
+.mock.s7 .mock-progress .pct { color:#55627A; font-size:11.5px; font-variant-numeric:tabular-nums; }
+.mock.s7 .mock-main { background:#FFFFFF; border:1px solid #DDE2EA; border-radius:6px; padding:14px 16px; }
+.mock.s7 .mock-badges { margin-bottom:10px; }
+.mock.s7 .bd { font-size:10.5px; padding:2px 8px; background:#F0F2F6; color:#4A5568; border:1px solid #E0E5EC; font-family:Consolas,monospace; }
+.mock.s7 .bd.id { background:#EAF1FB; color:#2C5FA8; border-color:#CFDFF2; }
+.mock.s7 .bd.p0 { background:#FCEAEA; color:#C0392B; border-color:#F3CFCF; }
+.mock.s7 .bd.p1 { background:#FCF6E6; color:#9A6D0B; border-color:#F0E2BB; }
+.mock.s7 .bd.p2 { background:#F4F6F9; color:#6B7A90; border-color:#E5E9F0; }
+.mock.s7 .bd.risk { background:#FDF0E4; color:#B4651B; border-color:#F2DFC9; }
+.mock.s7 .bd.module { background:#EFEAF8; color:#5E46A1; border-color:#DED4F0; }
+.mock.s7 .mock-main h1 { font-size:16px; margin-bottom:12px; }
+.mock.s7 .msec { margin-bottom:12px; }
+.mock.s7 .msec h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.6px; color:#6B7A90; margin-bottom:6px; }
+.mock.s7 .msec h2::before { display:none; }
+.mock.s7 .msec p, .mock.s7 .msec li { font-size:12.5px; line-height:1.7; }
+.mock.s7 .prec-box { background:#F7F8FA; border:1px solid #EDF0F4; border-radius:4px; }
+.mock.s7 .mock-side { background:#FFFFFF; border:1px solid #DDE2EA; border-radius:6px; padding:14px 16px; }
+.mock.s7 .mock-side h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.6px; color:#6B7A90; }
+.mock.s7 .mock-side h2::before { display:none; }
+.mock.s7 .rbtns button { font-size:12px; padding:8px 0; border-radius:4px; border:1px solid #DDE2EA; background:#fff; }
+.mock.s7 .rbtns .pass{ color:#1E9E54; border-color:#BFE3CF; }
+.mock.s7 .rbtns .fail{ color:#D64545; border-color:#F0C9C9; }
+.mock.s7 .rbtns .block{ color:#C98A1B; border-color:#EBD9A8; }
+.mock.s7 .rbtns .na{ color:#6B7A90; border-color:#E0E5EC; }
+.mock.s7 .rbtns .active{ background:currentColor; color:#fff; border-color:currentColor; }
+.mock.s7 .sfield label { color:#6B7A90; font-size:10.5px; }
+.mock.s7 .sfield input, .mock.s7 .sfield textarea { border:1px solid #DDE2EA; font-size:12px; padding:6px 8px; border-radius:3px; background:#fff; }
+.mock.s7 .sfield input:focus, .mock.s7 .sfield textarea:focus { outline:none; border-color:#3B6FB8; box-shadow:0 0 0 2px rgba(59,111,184,.15); }
+.mock.s7 .mock-nav { background:#FFFFFF; border-top:1px solid #DDE2EA; }
+.mock.s7 .nav-btn { background:#fff; border:1px solid #DDE2EA; color:#4A5568; border-radius:4px; font-size:12px; }
+.mock.s7 .nav-btn:hover { border-color:#3B6FB8; color:#3B6FB8; }
+.mock.s7 .counter { color:#55627A; font-variant-numeric:tabular-nums; }
+
+/* ============================================================
+   S8 自然柔和 Soft Nature
+   ============================================================ */
+.t8 .thumb { background:#F5F7F2; }
+.t8 .thumb-top { background:#FFFFFF; border-bottom:1px solid #E4E9DE; } .t8 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#4E9A62; border-radius:3px; }
+.t8 .thumb-progress { background:#E8EDE4; }
+.t8 .thumb-main { background:#FFFFFF; border:1px solid #E9EEE4; }
+.t8 .thumb-side { background:#FFFFFF; border:1px solid #E9EEE4; }
+.t8 .thumb-foot { background:#F5F7F2; }
+.t8 .tile-swatches i:nth-child(1){ background:#4E9A62; } .t8 .tile-swatches i:nth-child(2){ background:#F2E9DC; } .t8 .tile-swatches i:nth-child(3){ background:#F5F7F2; }
+
+.mock.s8 { background:#F5F7F2; color:#3D4438; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; }
+.mock.s8 .mock-topbar { background:#FFFFFF; border-bottom:1px solid #E7ECDF; }
+.mock.s8 .mock-brand { color:#3D4438; } .mock.s8 .mock-brand .dot { background:#4E9A62; }
+.mock.s8 .mtb-btn { color:#67705F; }
+.mock.s8 .mtb-btn:hover { background:#F3F6EF; color:#3D4438; }
+.mock.s8 .mtb-btn.active { background:#EAF3EC; color:#3E7D4F; }
+.mock.s8 .mtb-btn.primary { background:#4E9A62; color:#fff; box-shadow:0 3px 10px rgba(78,154,98,.3); }
+.mock.s8 .mtb-btn.primary:hover { background:#418B55; }
+.mock.s8 .mtb-select { border:1px solid #DDE3D4; background:#fff; color:#3D4438; }
+.mock.s8 .mtb-sep { background:#DDE3D4; }
+.mock.s8 .mock-progress { background:#FFFFFF; border-bottom:1px solid #EFF3EA; }
+.mock.s8 .mock-progress .bar { background:#E8EDE4; }
+.mock.s8 .mock-progress .bar i.pass{ background:#55A668; } .mock.s8 .mock-progress .bar i.fail{ background:#D97B6B; }
+.mock.s8 .mock-progress .bar i.block{ background:#D9A94E; } .mock.s8 .mock-progress .bar i.na{ background:#C6CDBE; }
+.mock.s8 .mock-progress .pct { color:#7A8474; }
+.mock.s8 .mock-main { background:#FFFFFF; border:1px solid #E9EEE4; border-radius:12px; box-shadow:0 4px 16px rgba(90,110,80,.08); }
+.mock.s8 .bd { background:#F3F6F0; color:#5D6657; }
+.mock.s8 .bd.id { background:#EAF3EC; color:#3E7D4F; font-family:Consolas,monospace; }
+.mock.s8 .bd.kind { background:#F0F6F1; color:#4E9A62; }
+.mock.s8 .bd.p0 { background:#FBEDE9; color:#C05A48; }
+.mock.s8 .bd.p1 { background:#FBF4E2; color:#A97C24; }
+.mock.s8 .bd.p2 { background:#F4F5F1; color:#8A9182; }
+.mock.s8 .bd.risk { background:#FBF1E3; color:#C0813B; }
+.mock.s8 .bd.module { background:#F0EDF8; color:#6D5DA8; }
+.mock.s8 .msec h2 { color:#4A5244; } .mock.s8 .msec h2::before { background:#4E9A62; }
+.mock.s8 .msec li::marker { color:#4E9A62; }
+.mock.s8 .prec-box { background:#F5F7F2; border:1px solid #E7ECDF; }
+.mock.s8 .mock-side { background:#FFFFFF; border:1px solid #E9EEE4; border-radius:12px; box-shadow:0 4px 16px rgba(90,110,80,.08); }
+.mock.s8 .mock-side h2 { color:#4A5244; } .mock.s8 .mock-side h2::before { background:#4E9A62; }
+.mock.s8 .rbtns .pass{ background:#EAF3EC; color:#3E7D4F; border-color:#CBE2D1; }
+.mock.s8 .rbtns .fail{ background:#FBEDE9; color:#C05A48; border-color:#F0D4CC; }
+.mock.s8 .rbtns .block{ background:#FBF4E2; color:#A97C24; border-color:#EFE3BC; }
+.mock.s8 .rbtns .na{ background:#F4F5F1; color:#7A8474; border-color:#E3E7DE; }
+.mock.s8 .rbtns .active{ outline:2px solid currentColor; outline-offset:1px; }
+.mock.s8 .sfield label { color:#7A8474; }
+.mock.s8 .sfield input, .mock.s8 .sfield textarea { border-color:#DDE3D4; background:#FDFEFB; color:#3D4438; }
+.mock.s8 .sfield input:focus, .mock.s8 .sfield textarea:focus { outline:2px solid rgba(78,154,98,.22); border-color:#4E9A62; }
+.mock.s8 .mock-nav { background:#FFFFFF; border-top:1px solid #E7ECDF; }
+.mock.s8 .nav-btn { background:#fff; border-color:#DDE3D4; color:#4A5244; }
+.mock.s8 .nav-btn:hover { border-color:#4E9A62; color:#3E7D4F; }
+.mock.s8 .counter { color:#7A8474; }
+
+/* ============================================================
+   S9 复古终端 Retro Terminal
+   ============================================================ */
+.t9 .thumb { background:#0A0E0A; }
+.t9 .thumb-top { background:#0D120D; border-bottom:1px solid #2A4A31; } .t9 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:#39FF7A; }
+.t9 .thumb-progress { background:#12200F; }
+.t9 .thumb-main { background:#0D120D; border:1px solid #2A4A31; }
+.t9 .thumb-side { background:#0D120D; border:1px solid #2A4A31; }
+.t9 .thumb-foot { background:#0A0E0A; border-top:1px solid #2A4A31; }
+.t9 .tile-swatches i:nth-child(1){ background:#39FF7A; } .t9 .tile-swatches i:nth-child(2){ background:#0D120D; } .t9 .tile-swatches i:nth-child(3){ background:#FFB03C; }
+
+.mock.s9 { background:#0A0E0A; color:#39FF7A; font-family:"Courier New","SF Mono",Consolas,monospace; position:relative; }
+.mock.s9::after { content:""; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px); }
+.mock.s9 .mock-topbar { background:#0D120D; border-bottom:1px solid #2A4A31; }
+.mock.s9 .mock-brand { color:#39FF7A; font-size:13px; } .mock.s9 .mock-brand .dot { background:#FFB03C; box-shadow:0 0 6px #FFB03C; }
+.mock.s9 .mock-brand .file { opacity:.7; }
+.mock.s9 .mtb-btn { color:#2E9E55; border:1px solid #2A4A31; background:#0D120D; border-radius:0; font-family:inherit; }
+.mock.s9 .mtb-btn:hover { color:#7BFFA6; border-color:#39FF7A; }
+.mock.s9 .mtb-btn.active { color:#04140A; background:#39FF7A; border-color:#39FF7A; }
+.mock.s9 .mtb-btn.primary { color:#04140A; background:#39FF7A; border-color:#39FF7A; font-weight:700; box-shadow:0 0 10px rgba(57,255,122,.5); }
+.mock.s9 .mtb-select { background:#0D120D; border:1px solid #2A4A31; color:#39FF7A; border-radius:0; font-family:inherit; }
+.mock.s9 .mtb-sep { background:#2A4A31; }
+.mock.s9 .mock-progress { background:#0D120D; border-bottom:1px solid #1E3325; }
+.mock.s9 .mock-progress .bar { background:#12200F; border-radius:0; border:1px solid #2A4A31; }
+.mock.s9 .mock-progress .bar i.pass{ background:#39FF7A; } .mock.s9 .mock-progress .bar i.fail{ background:#FF5C5C; }
+.mock.s9 .mock-progress .bar i.block{ background:#FFB03C; } .mock.s9 .mock-progress .bar i.na{ background:#1E3325; }
+.mock.s9 .mock-progress .pct { color:#2E9E55; }
+.mock.s9 .mock-main { background:#0D120D; border:1px solid #2A4A31; border-radius:0; }
+.mock.s9 .bd { border:1px solid #2A4A31; color:#5FE08A; background:transparent; font-size:10.5px; }
+.mock.s9 .bd.id { color:#FFB03C; border-color:#3A5A31; }
+.mock.s9 .bd.p0 { color:#FF7A7A; } .mock.s9 .bd.p1 { color:#FFC46B; } .mock.s9 .bd.p2 { color:#4E7A5C; }
+.mock.s9 .bd.risk { color:#FF9C5C; } .mock.s9 .bd.module { color:#6BFFB8; }
+.mock.s9 .mock-main h1 { font-size:17px; letter-spacing:.5px; }
+.mock.s9 .msec h2 { color:#5FE08A; text-transform:uppercase; font-size:11px; letter-spacing:2px; }
+.mock.s9 .msec h2::before { display:none; }
+.mock.s9 .msec li::marker { color:#FFB03C; }
+.mock.s9 .prec-box { border:1px dashed #2A4A31; background:transparent; }
+.mock.s9 .mock-side { background:#0D120D; border:1px solid #2A4A31; border-radius:0; }
+.mock.s9 .mock-side h2 { color:#5FE08A; text-transform:uppercase; font-size:11px; letter-spacing:2px; }
+.mock.s9 .mock-side h2::before { display:none; }
+.mock.s9 .rbtns button { border-radius:0; font-family:inherit; border:1px solid #2A4A31; background:#0D120D; }
+.mock.s9 .rbtns .pass{ color:#39FF7A; } .mock.s9 .rbtns .fail{ color:#FF5C5C; } .mock.s9 .rbtns .block{ color:#FFB03C; } .mock.s9 .rbtns .na{ color:#4E7A5C; }
+.mock.s9 .rbtns .active{ color:#04140A; background:#39FF7A; border-color:#39FF7A; }
+.mock.s9 .rbtns .fail.active{ background:#FF5C5C; color:#140404; border-color:#FF5C5C; }
+.mock.s9 .rbtns .block.active{ background:#FFB03C; color:#140A04; border-color:#FFB03C; }
+.mock.s9 .rbtns .na.active{ background:#4E7A5C; color:#04140A; }
+.mock.s9 .sfield label { color:#2E9E55; }
+.mock.s9 .sfield input, .mock.s9 .sfield textarea { background:#08110A; border:1px solid #2A4A31; color:#39FF7A; border-radius:0; font-family:inherit; }
+.mock.s9 .sfield input:focus, .mock.s9 .sfield textarea:focus { outline:none; border-color:#39FF7A; box-shadow:0 0 8px rgba(57,255,122,.35); }
+.mock.s9 .mock-nav { background:#0D120D; border-top:1px solid #2A4A31; }
+.mock.s9 .nav-btn { background:#0D120D; border:1px solid #2A4A31; color:#39FF7A; border-radius:0; font-family:inherit; }
+.mock.s9 .nav-btn:hover { background:#39FF7A; color:#04140A; }
+.mock.s9 .counter { color:#2E9E55; }
+
+/* ============================================================
+   S10 赛博朋克 Cyberpunk
+   ============================================================ */
+.t10 .thumb { background:#12081F; }
+.t10 .thumb-top { background:#1C0F33; border-bottom:1px solid rgba(255,46,154,.45); } .t10 .thumb-top::after{ content:""; display:block; width:34%; height:5px; margin:3px 4px; background:linear-gradient(90deg,#FF2E9A,#00E5FF); }
+.t10 .thumb-progress { background:rgba(255,255,255,.08); }
+.t10 .thumb-main { background:rgba(255,255,255,.05); border:1px solid rgba(0,229,255,.35); }
+.t10 .thumb-side { background:rgba(255,255,255,.05); border:1px solid rgba(255,46,154,.4); }
+.t10 .thumb-foot { background:#0F061C; }
+.t10 .tile-swatches i:nth-child(1){ background:#FF2E9A; } .t10 .tile-swatches i:nth-child(2){ background:#00E5FF; } .t10 .tile-swatches i:nth-child(3){ background:#F7D51D; }
+
+.mock.s10 { background:#12081F; color:#EFE4FF; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; position:relative; }
+.mock.s10::before { content:""; position:absolute; inset:0; pointer-events:none; background:
+  linear-gradient(rgba(0,229,255,.05) 1px, transparent 1px) 0 0/100% 34px,
+  linear-gradient(90deg, rgba(0,229,255,.05) 1px, transparent 1px) 0 0/34px 100%; }
+.mock.s10 .mock-topbar { background:rgba(22,10,38,.92); border-bottom:1px solid rgba(255,46,154,.5); clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%); padding-bottom:14px; }
+.mock.s10 .mock-brand { color:#fff; text-transform:uppercase; letter-spacing:1.5px; font-size:13px; text-shadow:0 0 12px rgba(0,229,255,.6); }
+.mock.s10 .mock-brand .dot { background:#F7D51D; box-shadow:0 0 10px #F7D51D; }
+.mock.s10 .mtb-btn { color:#B89FD6; border:1px solid rgba(255,46,154,.35); background:rgba(255,46,154,.06); clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%); }
+.mock.s10 .mtb-btn:hover { color:#fff; border-color:#00E5FF; box-shadow:0 0 12px rgba(0,229,255,.35); }
+.mock.s10 .mtb-btn.active { color:#12081F; background:linear-gradient(90deg,#FF2E9A,#FF6BC1); border-color:#FF2E9A; }
+.mock.s10 .mtb-btn.primary { color:#12081F; background:linear-gradient(90deg,#00E5FF,#7A5CFF); border-color:#00E5FF; font-weight:700; text-shadow:none; box-shadow:0 0 18px rgba(0,229,255,.5); }
+.mock.s10 .mtb-select { background:#1C0F33; border:1px solid rgba(0,229,255,.4); color:#CFE9FF; }
+.mock.s10 .mtb-sep { background:rgba(0,229,255,.4); }
+.mock.s10 .mock-progress { background:rgba(15,6,28,.85); border-bottom:1px solid rgba(0,229,255,.3); }
+.mock.s10 .mock-progress .bar { background:rgba(255,255,255,.08); }
+.mock.s10 .mock-progress .bar i.pass{ background:linear-gradient(90deg,#00E5A0,#00E5FF); } .mock.s10 .mock-progress .bar i.fail{ background:linear-gradient(90deg,#FF2E9A,#FF5C8A); }
+.mock.s10 .mock-progress .bar i.block{ background:linear-gradient(90deg,#F7D51D,#FF9C3C); } .mock.s10 .mock-progress .bar i.na{ background:rgba(180,140,240,.3); }
+.mock.s10 .mock-progress .pct { color:#9E8AC0; }
+.mock.s10 .mock-main { background:rgba(255,255,255,.045); border:1px solid rgba(0,229,255,.3); box-shadow:0 0 24px rgba(0,229,255,.08), inset 0 0 40px rgba(255,46,154,.05); }
+.mock.s10 .bd { background:rgba(255,46,154,.1); color:#FF9CD0; border:1px solid rgba(255,46,154,.35); }
+.mock.s10 .bd.id { background:rgba(0,229,255,.1); color:#6BEAFF; border-color:rgba(0,229,255,.4); font-family:Consolas,monospace; }
+.mock.s10 .bd.kind { background:rgba(0,229,160,.1); color:#5CF0C0; border-color:rgba(0,229,160,.35); }
+.mock.s10 .bd.p0 { background:rgba(255,46,154,.16); color:#FF7AB8; border-color:rgba(255,46,154,.5); }
+.mock.s10 .bd.p1 { background:rgba(247,213,29,.1); color:#F7E25C; border-color:rgba(247,213,29,.35); }
+.mock.s10 .bd.p2 { background:rgba(180,140,240,.1); color:#C4A8F0; border-color:rgba(180,140,240,.3); }
+.mock.s10 .bd.risk { background:rgba(255,156,60,.12); color:#FFB566; border-color:rgba(255,156,60,.4); }
+.mock.s10 .bd.module { background:rgba(122,92,255,.14); color:#B49AFF; border-color:rgba(122,92,255,.4); }
+.mock.s10 .mock-main h1 { color:#fff; text-shadow:0 0 20px rgba(255,46,154,.4); }
+.mock.s10 .msec h2 { color:#D9C6F2; } .mock.s10 .msec h2::before { background:linear-gradient(180deg,#00E5FF,#FF2E9A); }
+.mock.s10 .msec li::marker { color:#00E5FF; }
+.mock.s10 .prec-box { background:rgba(0,229,255,.06); border:1px solid rgba(0,229,255,.22); }
+.mock.s10 .mock-side { background:rgba(255,255,255,.045); border:1px solid rgba(255,46,154,.35); box-shadow:0 0 24px rgba(255,46,154,.1); }
+.mock.s10 .mock-side h2 { color:#D9C6F2; } .mock.s10 .mock-side h2::before { background:linear-gradient(180deg,#FF2E9A,#00E5FF); }
+.mock.s10 .rbtns .pass{ background:rgba(0,229,160,.08); color:#5CF0C0; border-color:rgba(0,229,160,.45); }
+.mock.s10 .rbtns .fail{ background:rgba(255,46,154,.1); color:#FF7AB8; border-color:rgba(255,46,154,.5); }
+.mock.s10 .rbtns .block{ background:rgba(247,213,29,.08); color:#F7E25C; border-color:rgba(247,213,29,.4); }
+.mock.s10 .rbtns .na{ background:rgba(180,140,240,.07); color:#C4A8F0; border-color:rgba(180,140,240,.3); }
+.mock.s10 .rbtns .active{ box-shadow:0 0 16px currentColor, inset 0 0 10px rgba(255,255,255,.08); transform:translateY(-1px); }
+.mock.s10 .sfield label { color:#9E8AC0; }
+.mock.s10 .sfield input, .mock.s10 .sfield textarea { background:rgba(10,4,20,.8); border-color:rgba(0,229,255,.3); color:#EFE4FF; }
+.mock.s10 .sfield input:focus, .mock.s10 .sfield textarea:focus { outline:none; border-color:#FF2E9A; box-shadow:0 0 0 2px rgba(255,46,154,.25); }
+.mock.s10 .mock-nav { background:rgba(15,6,28,.9); border-top:1px solid rgba(255,46,154,.45); }
+.mock.s10 .nav-btn { background:rgba(255,46,154,.06); border-color:rgba(255,46,154,.4); color:#FF9CD0; }
+.mock.s10 .nav-btn:hover { color:#12081F; background:linear-gradient(90deg,#00E5FF,#7A5CFF); border-color:#00E5FF; }
+.mock.s10 .counter { color:#9E8AC0; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1080px){ .gallery { grid-template-columns:repeat(3,1fr); } }
+@media (max-width:720px){ .gallery { grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-head">
+    <div>
+      <h1>测试用例执行器 · <span>UI 风格原型</span></h1>
+      <p>同一套真实业务界面（顶栏 / 执行进度 / 用例阅读 / 结果登记 / 底部导航），套用十种差异化视觉语言。<br/>点击下方缩略卡切换预览，右上角标注了每种风格迁移到当前代码的落地成本。可点按“通过 / 失败”等按钮体验交互。</p>
+    </div>
+    <span class="head-hint">用例示例：IND-1.14.2-DCRK-001 倒车入库</span>
+  </header>
+
+  <nav class="gallery" id="gallery">
+    <div class="tile t1 active" data-style="s1"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">01</span><span class="tile-name">经典企业蓝</span></div><div class="tile-tags">专业 · 稳重 · 低干扰</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t2" data-style="s2"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">02</span><span class="tile-name">深色夜间</span></div><div class="tile-tags">护眼 · 专注 · 类 IDE</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t3" data-style="s3"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">03</span><span class="tile-name">极简黑白</span></div><div class="tile-tags">克制 · 高信息密度 · 无彩色</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t4" data-style="s4"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">04</span><span class="tile-name">玻璃拟态</span></div><div class="tile-tags">通透 · 现代 · 轻量感</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t5" data-style="s5"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">05</span><span class="tile-name">渐变科技</span></div><div class="tile-tags">未来感 · 数据可视化友好</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t6" data-style="s6"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">06</span><span class="tile-name">新拟态</span></div><div class="tile-tags">柔和 · 立体 · 触感</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t7" data-style="s7"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">07</span><span class="tile-name">数据表格风</span></div><div class="tile-tags">Excel 基因 · 批量执行 · 极致密度</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t8" data-style="s8"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">08</span><span class="tile-name">自然柔和</span></div><div class="tile-tags">护眼 · 亲和 · 低饱和度</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t9" data-style="s9"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">09</span><span class="tile-name">复古终端</span></div><div class="tile-tags">极客 · CRT 风 · 打字机感</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+    <div class="tile t10" data-style="s10"><div class="thumb"><div class="thumb-top"></div><div class="thumb-progress"></div><div class="thumb-body"><div class="thumb-main"></div><div class="thumb-side"></div></div><div class="thumb-foot"></div></div><div class="tile-meta"><div class="tile-row1"><span class="tile-no">10</span><span class="tile-name">赛博朋克</span></div><div class="tile-tags">高饱和 · 霓虹 · 冲击力</div><div class="tile-swatches"><i></i><i></i><i></i></div></div></div>
+  </nav>
+
+  <section class="stage">
+    <div class="stage-head">
+      <div>
+        <h2><span class="stage-no" id="stageNo">01</span><span id="stageName">经典企业蓝</span></h2>
+        <p id="stageDesc"></p>
+      </div>
+      <span class="cost-tag" id="stageCost"></span>
+    </div>
+    <div class="stage-viewport">
+      <div class="mock s1" id="mock">
+
+        <!-- 顶栏 -->
+        <div class="mock-topbar">
+          <div class="mock-brand"><span class="dot"></span>测试用例执行器<span class="file">IND-1.14.2_工业回归.xlsx</span></div>
+          <div class="mock-spacer"></div>
+          <div class="mtb-group">
+            <button class="mtb-btn">测试详情</button>
+            <button class="mtb-btn active">执行界面</button>
+            <span class="mtb-sep"></span>
+            <select class="mtb-select"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option><option>第 1 轮</option></select>
+            <button class="mtb-btn">＋新建列</button>
+            <button class="mtb-btn">筛选</button>
+            <button class="mtb-btn">下一条未测</button>
+            <span class="mtb-sep"></span>
+            <button class="mtb-btn primary">导出子任务</button>
+            <button class="mtb-btn">···</button>
+          </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="mock-progress">
+          <div class="bar">
+            <i class="pass" style="width:40%"></i><i class="fail" style="width:4.4%"></i><i class="block" style="width:2.2%"></i><i class="na" style="width:4.4%"></i>
+          </div>
+          <span class="pct">23 / 45 · 完成 51% · 通过 18 · 失败 2 · 阻塞 1 · 跳过 2</span>
+        </div>
+
+        <!-- 主体 -->
+        <div class="mock-body">
+          <div class="mock-main">
+            <div class="mock-badges">
+              <span class="bd id">IND-1.14.2-DCRK-001</span>
+              <span class="bd kind">功能</span>
+              <span class="bd p0">P0</span>
+              <span class="bd risk">高风险</span>
+              <span class="bd module">倒车入库</span>
+            </div>
+            <h1>倒车入库 — 目标车位识别与入库</h1>
+            <div class="msec">
+              <h2>前置条件</h2>
+              <p class="prec-box">机器人电量 ≥ 20%；场地车位线清晰；调度系统在线且已下发建图任务</p>
+            </div>
+            <div class="msec">
+              <h2>测试步骤</h2>
+              <ol>
+                <li>在调度界面下发“倒车入库”任务</li>
+                <li>机器人自动导航至目标车位前方约 1.5m 处</li>
+                <li>观察机器人倒车入库全程，记录停位偏差</li>
+              </ol>
+            </div>
+            <div class="msec">
+              <h2>预期结果</h2>
+              <ul>
+                <li>任务下发成功，机器人开始执行，状态置为“执行中”</li>
+                <li>机器人准确停入车位，左右距离误差 &lt; 5cm</li>
+                <li>入库完成，上报任务成功并回到待命状态</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="mock-side">
+            <h2>执行结果</h2>
+            <div class="rbtns">
+              <button class="pass">通过<kbd>1</kbd></button>
+              <button class="fail">失败<kbd>2</kbd></button>
+              <button class="block">阻塞<kbd>3</kbd></button>
+              <button class="na">跳过<kbd>4</kbd></button>
+            </div>
+            <label class="auto-line"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+            <div class="sfield">
+              <label>实际现象 / 结果</label>
+              <textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea>
+            </div>
+            <div class="sfield-row">
+              <div class="sfield"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+              <div class="sfield"><label>BugID</label><input type="text" placeholder="关联缺陷编号" /></div>
+            </div>
+            <div class="sfield">
+              <label>备注 / 问题描述</label>
+              <textarea rows="2" placeholder="补充说明或问题描述…"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部导航 -->
+        <div class="mock-nav">
+          <button class="nav-btn">← 上一条<kbd>←</kbd></button>
+          <span class="counter">23 / 45</span>
+          <button class="nav-btn">下一条 →<kbd>→</kbd></button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const STYLES = {
+  s1:{ no:'01', name:'经典企业蓝', desc:'主流企业级配色：白色顶栏 + 蓝色主操作 + 浅灰画布。语义色克制约束在状态标签内，长时间执行不疲劳，是当前代码改造量最小的“稳妥升级”。', cost:'落地成本：低', lv:'easy' },
+  s2:{ no:'02', name:'深色夜间', desc:'深色画布 + 低饱和语义色，对标 IDE / 数据看板。适合长时间、暗光环境下执行用例，PASS/FAIL 通过浅色浮起增强辨识，状态标签保留高对比。', cost:'落地成本：中', lv:'mid' },
+  s3:{ no:'03', name:'极简黑白', desc:'黑白灰三级层次，去掉所有装饰性彩色，只保留结果语义色。信息密度极高、视觉噪音最低，适合追求“工具感”的硬核用户，迁移成本极低（改色板即可）。', cost:'落地成本：低', lv:'easy' },
+  s4:{ no:'04', name:'玻璃拟态', desc:'毛玻璃卡片 + 柔和渐变背景，卡片半透明、层次通透。现代感强、视觉轻盈，但背景渐变在低配屏/截图场景可能略显花哨，建议只用于浅色卡片核心区。', cost:'落地成本：中', lv:'mid' },
+  s5:{ no:'05', name:'渐变科技', desc:'深蓝底 + 青紫渐变主色 + 微弱发光。把“执行进度”“P0/高风险”等关键信息用发光色带强调，适合希望产品有“科技旗舰”调性的场景。', cost:'落地成本：中', lv:'mid' },
+  s6:{ no:'06', name:'新拟态', desc:'浮雕质感：同色系背景 + 内外阴影营造“按压”手感，无边框、无杂色。视觉柔和独特，但大面积浮雕在复杂信息页可能降低对比度，建议仅用于执行区卡片。', cost:'落地成本：中', lv:'mid' },
+  s7:{ no:'07', name:'数据表格风', desc:'以 Excel 表格语言重塑界面：细网格线、小字号、等宽数字、结果色块单元格。对天天看表格的测试工程师最亲切，批量执行场景效率最高，与现有表格视图天然统一。', cost:'落地成本：低', lv:'easy' },
+  s8:{ no:'08', name:'自然柔和', desc:'低饱和绿 + 暖米色，护眼舒适、亲和度高。彩色仅出现在状态标签与主按钮，大面积留白减少压迫感，适合追求轻松工作氛围的团队。', cost:'落地成本：低', lv:'easy' },
+  s9:{ no:'09', name:'复古终端', desc:'CRT 绿字终端风：等宽字体、方块按钮、扫描线纹理、闪烁光标。极客彩蛋向，个性最强，但阅读长文本步骤时舒适度一般，适合作为“主题彩蛋”而非默认皮肤。', cost:'落地成本：高', lv:'hard' },
+  s10:{ no:'10', name:'赛博朋克', desc:'深紫底 + 霓虹品红/电青高饱和，斜切按钮 + 网格背景，冲击力最强。适合品牌发布会 / 演示场景，作为长期工作界面会疲劳，建议仅做演示模式。', cost:'落地成本：高', lv:'hard' },
+};
+const gallery = document.getElementById('gallery');
+const mock = document.getElementById('mock');
+const stageNo = document.getElementById('stageNo');
+const stageName = document.getElementById('stageName');
+const stageDesc = document.getElementById('stageDesc');
+const stageCost = document.getElementById('stageCost');
+
+gallery.querySelectorAll('.tile').forEach(tile => {
+  tile.addEventListener('click', () => {
+    gallery.querySelectorAll('.tile').forEach(t => t.classList.remove('active'));
+    tile.classList.add('active');
+    const key = tile.dataset.style;
+    const s = STYLES[key];
+    mock.className = 'mock ' + key;
+    stageNo.textContent = s.no;
+    stageName.textContent = s.name;
+    stageDesc.textContent = s.desc;
+    stageCost.textContent = s.cost;
+    stageCost.className = 'cost-tag cost-' + s.lv;
+  });
+});
+
+// 结果按钮点按反馈
+document.querySelectorAll('#mock .rbtns button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// 初始化第一张的描述
+(function(){ const s = STYLES.s1; stageNo.textContent = s.no; stageName.textContent = s.name; stageDesc.textContent = s.desc; stageCost.textContent = s.cost; stageCost.className = 'cost-tag cost-' + s.lv; })();
+
+// URL 参数直接切风格（便于外部链接 / 截图）
+(function(){
+  const p = new URLSearchParams(location.search);
+  const k = p.get('style');
+  if (k && STYLES[k]) {
+    const tile = gallery.querySelector('.tile[data-style="'+k+'"]');
+    if (tile) tile.click();
+  }
+})();
+</script>
+</body>
+</html>

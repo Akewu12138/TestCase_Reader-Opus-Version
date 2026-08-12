@@ -17,12 +17,12 @@
       <span id="sessionInfo" class="session-info"></span>
       <!-- 顶栏三组信息架构：视图切换 / 轮次与工作集 / 全局动作（低频动作收入"···"菜单） -->
       <span id="execControls" class="exec-controls">
-        <span class="tb-group">
+        <span class="tb-group tb-view-group">
           <button id="viewToggle" class="btn btn-ghost" title="切换测试详情 / 执行界面">测试详情</button>
           <button id="tableToggle" class="btn btn-ghost" title="切换 表格视图 / 卡片视图">表格视图</button>
         </span>
         <span class="tb-sep"></span>
-        <span class="tb-group">
+        <span class="tb-group tb-work-group">
           <select id="roundSelect" class="sheet-select round-select" title="选择本轮测试结果写入列"></select>
           <button id="newRoundBtn" class="btn btn-ghost" title="在所有用例 Sheet 新建结果列（开启新一轮测试）">＋新建列</button>
           <button id="filterToggle" class="btn btn-ghost" title="筛选用例（激活后仅执行匹配的用例）">筛选</button>
@@ -30,12 +30,20 @@
           <button id="jumpNext" class="btn btn-ghost" title="跳到下一条未完成">下一条未测</button>
         </span>
         <span class="tb-sep"></span>
-        <span class="tb-group">
+        <span class="tb-group tb-actions-group">
+          <button id="exportSubtaskBtn" class="btn btn-ghost" title="把当前筛选范围的用例导出为精简子集 xlsx，分发给辅助测试人员">导出子任务</button>
+          <button id="importResultsBtn" class="btn btn-ghost" title="导入辅助人员回传的子任务文件，预览比对后合入主报告">导入结果</button>
           <button id="helpBtn" class="btn btn-ghost tb-icon" title="键盘快捷键速查 (?)">?</button>
           <span class="tb-more">
             <button id="moreBtn" class="btn btn-ghost tb-icon" title="更多操作">···</button>
             <div id="moreMenu" class="more-menu hidden">
               <a id="downloadBtn" class="more-item" href="/api/download">下载 Excel</a>
+              <button id="backupBtn" class="more-item" title="查看并恢复当前文件的历史备份">备份与恢复</button>
+              <button id="retryPendingBtn" class="more-item" title="重试保存失败的本机草稿">重试待提交</button>
+              <button id="compareBtn" class="more-item" title="比较不同测试轮次的结果">轮次对比</button>
+              <button id="reportBtn" class="more-item" title="生成当前工作集测试报告">测试报告</button>
+              <button id="taskBtn" class="more-item" title="查看分发任务及回传状态">任务中心</button>
+              <button id="settingsBtn" class="more-item" title="配置缺陷链接和界面偏好">设置</button>
               <button id="changeFile" class="more-item" title="返回初始页更换用例">更换用例</button>
               <button id="clearRoundBtn" class="more-item more-item-danger" title="清空当前轮次列的全部测试结果">清除本轮结果</button>
             </div>
@@ -48,7 +56,7 @@
 
   <!-- 进度条（初始页隐藏） -->
   <div id="progressWrap" class="progress-wrap">
-    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div><div id="progressDistribution" class="progress-distribution"></div></div>
     <span id="progressText" class="progress-text">0 / 0</span>
   </div>
 
@@ -133,6 +141,30 @@
           <span class="field-label">测试人员</span>
           <input id="testerInput" class="field-input" type="text" placeholder="你的名字" />
         </label>
+        <label class="field">
+          <span class="field-label">版本号</span>
+          <input id="versionInput" class="field-input" type="text" placeholder="如：v2.1.0" />
+        </label>
+        <label class="field">
+          <span class="field-label">构建号</span>
+          <input id="buildInput" class="field-input" type="text" placeholder="如：20260810.1" />
+        </label>
+        <label class="field">
+          <span class="field-label">设备 / 机型</span>
+          <input id="deviceInput" class="field-input" type="text" placeholder="如：测试机 A" />
+        </label>
+        <label class="field">
+          <span class="field-label">系统环境</span>
+          <input id="environmentInput" class="field-input" type="text" placeholder="如：Windows 11 / 固件 xxx" />
+        </label>
+        <label class="field">
+          <span class="field-label">测试范围</span>
+          <input id="scopeInput" class="field-input" type="text" placeholder="如：冒烟用例 / 模块 A" />
+        </label>
+        <label class="field">
+          <span class="field-label">负责人</span>
+          <input id="ownerInput" class="field-input" type="text" placeholder="负责人姓名" />
+        </label>
       </div>
 
       <div class="setup-files-head">
@@ -141,6 +173,10 @@
           <button id="uploadBtn" class="btn btn-ghost btn-small">上传 / 更换文件</button>
           <input id="uploadInput" type="file" accept=".xlsx,.xlsm,.xls,.csv,.md,.xmind" class="hidden" />
         </div>
+      </div>
+      <div class="library-toolbar">
+        <input id="librarySearch" class="field-input" type="search" placeholder="搜索文件名" />
+        <span class="field-hint">归档文件不会出现在执行列表</span>
       </div>
       <div id="fileList" class="file-list"></div>
       <div id="setupHint" class="setup-hint"></div>
@@ -169,7 +205,7 @@
         <div id="precondition" class="section-body"></div>
       </div>
 
-      <!-- 场景讲解（仅场景用例显示）：图文混排信息卡片，可折叠 -->
+      <!-- 场景讲解与示意图：功能/场景用例均可按需显示，可折叠 -->
       <div id="scenarioSection" class="section scene-card hidden">
         <button id="sceneToggle" class="scene-head" type="button" title="展开 / 收起场景讲解">
           <span class="scene-icon">🎬</span>
@@ -232,10 +268,11 @@
           </label>
         </div>
 
-        <div class="field-row two-col">
+      <div class="field-row two-col">
           <label class="field">
             <span class="field-label">BugID</span>
             <input id="bugId" class="field-input" type="text" placeholder="关联缺陷编号" />
+            <a id="bugLink" class="bug-link hidden" target="_blank" rel="noopener"></a>
           </label>
           <label class="field">
             <span class="field-label">测试人员</span>
@@ -247,6 +284,14 @@
           <span class="field-label">备注 / 问题描述</span>
           <textarea id="note" class="field-input" rows="2" placeholder="补充说明或问题描述…"></textarea>
         </label>
+        <div id="evidenceSection" class="evidence-section">
+          <div class="field-label">失败证据</div>
+          <div class="evidence-actions">
+            <input id="evidenceInput" type="file" class="field-input" />
+            <span id="evidenceHint" class="field-hint">支持截图、日志和其他附件</span>
+          </div>
+          <div id="evidenceList" class="evidence-list"></div>
+        </div>
       </div>
       </aside>
     </section>
@@ -259,6 +304,13 @@
       <div class="table-head">
         <h1 id="tableTitle" class="table-title"></h1>
         <div id="tableSummary" class="table-summary"></div>
+      </div>
+      <div id="batchBar" class="batch-bar hidden">
+        <label class="batch-select-all"><input id="batchSelectAll" type="checkbox" /> 全选当前 Sheet</label>
+        <span id="batchCount" class="batch-count"></span>
+        <button id="batchPass" class="btn btn-small btn-batch-pass">批量通过</button>
+        <button id="batchNa" class="btn btn-small btn-batch-na">批量跳过</button>
+        <button id="batchClear" class="btn btn-small btn-ghost">取消选择</button>
       </div>
       <div id="tableWrap" class="case-table-wrap"></div>
     </section>
@@ -293,6 +345,26 @@
         <h1 id="previewTitle" class="preview-title"></h1>
       </div>
       <div id="previewBody" class="preview-body"></div>
+    </section>
+    <section id="compareView" class="compare-view hidden">
+      <div class="analysis-head">
+        <div>
+          <h1 class="detail-title">轮次对比</h1>
+          <div id="compareSummary" class="detail-summary"></div>
+        </div>
+        <div class="compare-controls">
+          <label class="field-label">查看范围
+            <select id="compareMode" class="sheet-select">
+              <option value="all">全部用例</option>
+              <option value="regression">上轮通过，本轮失败</option>
+              <option value="newFail">本轮新增失败</option>
+              <option value="continuousFail">连续失败</option>
+              <option value="fixed">失败已修复</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div id="compareBody" class="compare-body"></div>
     </section>
   </main>
 
@@ -342,7 +414,125 @@
     </div>
   </div>
 
+  <!-- 导出子任务确认弹窗（复用 help-overlay 遮罩/面板骨架） -->
+  <div id="subtaskExportModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel">
+      <h2 class="help-title">导出子任务</h2>
+      <p id="subtaskExportDesc" class="confirm-desc"></p>
+      <div id="subtaskExportSheets" class="confirm-note"></div>
+        <label class="field">
+          <span class="field-label">分发给（可空，将写入主文件"测试人员"列）</span>
+          <input id="subtaskTesterInput" class="field-input" type="text" placeholder="辅助测试人员名字" />
+        </label>
+        <div class="field-row two-col">
+          <label class="field"><span class="field-label">截止时间（可空）</span><input id="subtaskDueInput" class="field-input" type="datetime-local" /></label>
+          <label class="field"><span class="field-label">任务备注</span><input id="subtaskTaskNote" class="field-input" type="text" placeholder="交接说明" /></label>
+        </div>
+      <div id="subtaskExportHint" class="confirm-note"></div>
+      <div class="confirm-actions">
+        <button id="subtaskExportCancel" class="btn btn-ghost">取消</button>
+        <button id="subtaskExportOk" class="btn btn-primary">导出并下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导入结果 · 预览比对弹窗（复用 help-overlay 遮罩/面板骨架） -->
+  <div id="subtaskImportModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel subtask-panel-wide">
+      <h2 class="help-title">导入结果 · 预览比对</h2>
+      <div id="subtaskImportBody">
+        <div class="subtask-upload-row">
+          <input id="subtaskFileInput" type="file" accept=".xlsx" class="field-input" />
+          <button id="subtaskUploadBtn" class="btn btn-ghost btn-small">上传预览</button>
+        </div>
+        <p id="subtaskImportHint" class="confirm-note"></p>
+        <div id="subtaskPreview" class="hidden">
+          <div id="subtaskStats" class="subtask-stats"></div>
+          <div class="subtask-diff-wrap">
+            <table class="subtask-table">
+              <thead>
+                <tr><th>用例</th><th>字段</th><th>主文件现值</th><th>子文件新值</th></tr>
+              </thead>
+              <tbody id="subtaskDiffBody"></tbody>
+            </table>
+          </div>
+          <div class="subtask-actions">
+            <button id="subtaskOnlyEmptyBtn" class="btn btn-ghost btn-small">只选空缺</button>
+            <button id="subtaskSelectAllBtn" class="btn btn-ghost btn-small">全选</button>
+            <button id="subtaskSelectNoneBtn" class="btn btn-ghost btn-small">清空</button>
+            <span class="subtask-spacer"></span>
+            <button id="subtaskMergeCancel" class="btn btn-ghost">取消</button>
+            <button id="subtaskMergeOk" class="btn btn-primary" disabled>确认合入（0 项）</button>
+          </div>
+        </div>
+        <div id="subtaskMergeResult" class="hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Excel 解析预检确认 -->
+  <div id="preflightModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel subtask-panel-wide">
+      <h2 class="help-title">Excel 解析预检</h2>
+      <div id="preflightSummary" class="preflight-summary"></div>
+      <div id="preflightSheets" class="preflight-sheets"></div>
+      <div id="preflightWarnings" class="preflight-warnings"></div>
+      <div id="preflightChanges" class="preflight-changes"></div>
+      <div class="confirm-actions">
+        <button id="preflightCancel" class="btn btn-ghost">取消</button>
+        <button id="preflightOk" class="btn btn-primary">确认并开始测试</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备份恢复中心 -->
+  <div id="backupModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel subtask-panel-wide">
+      <h2 class="help-title">备份与恢复</h2>
+      <p id="backupHint" class="confirm-note"></p>
+      <div id="backupList" class="backup-list"></div>
+      <div class="confirm-actions">
+        <button id="backupClose" class="btn btn-ghost">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reportModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel-wide report-panel">
+      <div class="help-head"><h2 class="help-title">测试报告</h2><button id="reportClose" class="lb-btn help-close" title="关闭">×</button></div>
+      <div id="reportStats" class="report-stats"></div>
+      <pre id="reportBody" class="report-body"></pre>
+      <div class="confirm-actions"><button id="reportCopy" class="btn btn-ghost">复制 Markdown</button><button id="reportDownload" class="btn btn-ghost">下载 Markdown</button><button id="reportHtml" class="btn btn-primary">下载 HTML</button></div>
+    </div>
+  </div>
+
+  <div id="taskModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel-wide">
+      <div class="help-head"><h2 class="help-title">任务中心</h2><button id="taskClose" class="lb-btn help-close" title="关闭">×</button></div>
+      <p id="taskHint" class="confirm-note"></p>
+      <div id="taskList" class="task-list"></div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="help-overlay hidden">
+    <div class="help-panel subtask-panel">
+      <div class="help-head"><h2 class="help-title">设置</h2><button id="settingsClose" class="lb-btn help-close" title="关闭">×</button></div>
+      <label class="field"><span class="field-label">缺陷系统链接模板</span><input id="bugUrlInput" class="field-input" placeholder="https://jira.example/browse/{id}" /></label>
+      <label class="auto-advance"><input id="darkModeToggle" type="checkbox" /> 深色模式</label>
+      <p class="confirm-note">模板中的 <code>{id}</code> 会替换为当前用例的 BugID，配置仅保存在本机浏览器。</p>
+      <div class="confirm-actions"><button id="settingsCancel" class="btn btn-ghost">取消</button><button id="settingsSave" class="btn btn-primary">保存</button></div>
+    </div>
+  </div>
+
   <!-- 聚焦阅读侧栏（表格长文本全文深读，单焦点） -->
+  <div id="commandModal" class="help-overlay hidden">
+    <div class="help-panel command-panel">
+      <div class="help-head"><h2 class="help-title">快速定位</h2><button id="commandClose" class="lb-btn help-close" title="关闭">×</button></div>
+      <input id="commandInput" class="field-input command-input" type="search" placeholder="搜索用例编号、标题、模块或功能" autocomplete="off" />
+      <div id="commandList" class="command-list"></div>
+    </div>
+  </div>
+
   <div id="readerMask" class="reader-mask hidden"></div>
   <aside id="readerPanel" class="reader-panel hidden" aria-label="全文阅读">
     <div class="reader-head">

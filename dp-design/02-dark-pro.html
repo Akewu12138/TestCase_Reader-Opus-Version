@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>02 · 深色夜间 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;background:#0F1218;color:#E6EAF2}
+
+.demo{background:#0A0D12;color:#7E8BA0;font-size:12px;padding:7px 18px;display:flex;gap:14px;align-items:center;border-bottom:1px solid #1A212C}
+.demo b{color:#8FB2FF}
+.demo .tag{background:#1E2A44;color:#7FA8FF;border-radius:4px;padding:1px 8px;font-size:11px}
+
+.app{max-width:1440px;margin:0 auto;min-height:calc(100vh - 30px);display:flex;flex-direction:column}
+
+/* 顶部紧凑工具条 */
+.topbar{background:#131821;border-bottom:1px solid #1E2530;padding:0 18px;height:46px;display:flex;align-items:center;gap:12px}
+.brand{font-weight:700;font-size:14px;color:#EAF2FF;display:flex;align-items:center;gap:9px}
+.brand i{width:10px;height:10px;border-radius:3px;background:#5B8CFF;box-shadow:0 0 8px rgba(91,140,255,.6)}
+.brand small{font-weight:400;font-size:10.5px;color:#5F6C82}
+.tb-sep{width:1px;height:18px;background:#232B38}
+.tb-btn{font-size:11.5px;background:none;border:1px solid transparent;color:#8B96A8;padding:5px 10px;border-radius:5px;cursor:pointer}
+.tb-btn:hover{background:#1C2430;color:#E6EAF2}
+.tb-btn.on{background:#1E2A44;color:#7FA8FF;font-weight:600}
+.tb-btn.primary{background:#3B6FE0;color:#fff;font-weight:600;box-shadow:0 2px 10px rgba(59,111,224,.4)}
+.tb-sel{background:#131821;border:1px solid #2C3543;border-radius:5px;color:#C6CFDC;font-size:11.5px;padding:5px 8px}
+.tb-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.tb-dot{font-size:11px;color:#4ADE80;background:#14321F;border:1px solid #1F4A32;border-radius:20px;padding:3px 10px}
+
+/* 进度 */
+.progress{background:#11151D;border-bottom:1px solid #1E2530;padding:8px 18px;display:flex;align-items:center;gap:14px}
+.pbar{flex:1;height:6px;background:#232B38;border-radius:3px;overflow:hidden;display:flex}
+.pbar span{height:100%}
+.pbar .p{background:#2FBF71}.pbar .f{background:#F0524D}.pbar .b{background:#E8A13A}.pbar .n{background:#3A4454}
+.pinfo{font-size:11.5px;color:#8B96A8;white-space:nowrap}
+.pinfo b{color:#E6EAF2}
+
+/* 布局：模块条 + 主区 */
+.layout{flex:1;display:flex;gap:14px;padding:14px 18px;min-height:0}
+
+/* 左侧模块条（细） */
+.modnav{width:160px;flex-shrink:0;background:#131821;border:1px solid #1E2530;border-radius:9px;padding:10px 8px}
+.modnav h6{font-size:10px;color:#5F6C82;letter-spacing:1.2px;margin:4px 8px 8px;text-transform:uppercase}
+.mod{font-size:12px;padding:7px 9px;border-radius:6px;color:#9AA6B8;margin-bottom:2px;cursor:pointer;display:flex;justify-content:space-between}
+.mod:hover{background:#1C2430;color:#E6EAF2}
+.mod.on{background:#1E2A44;color:#7FA8FF;font-weight:600;box-shadow:inset 2px 0 0 #5B8CFF}
+.mod .cnt{font-size:10.5px;color:#5F6C82}
+
+/* 中间用例 */
+.case{flex:1;min-width:0;background:#171C26;border:1px solid #232B38;border-radius:9px;padding:20px 24px;overflow:auto}
+.badges{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.bd{font-size:11px;padding:3px 10px;border-radius:5px;font-weight:600}
+.bd.id{background:#1E2A44;color:#7FA8FF;font-family:Consolas,monospace}
+.bd.kind{background:#173327;color:#4ADE80}
+.bd.p0{background:#3A1F22;color:#FF8A87}
+.bd.risk{background:#3A2A15;color:#F5A524}
+.bd.mod{background:#2A2140;color:#B49AFF}
+.case h1{font-size:20px;margin-bottom:15px;line-height:1.4;color:#F2F6FC}
+.msec{margin-bottom:15px}
+.msec h2{font-size:12px;color:#8B96A8;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.msec p,.msec li{font-size:13.5px;line-height:1.9;color:#C6CFDC}
+.msec ol,.msec ul{padding-left:22px}
+.msec li::marker{color:#5B8CFF}
+.prec{background:#1C2430;border-radius:7px;padding:10px 14px;color:#B9C4D4}
+
+/* 右侧执行 */
+.exec{width:318px;flex-shrink:0;background:#171C26;border:1px solid #232B38;border-radius:9px;padding:17px;align-self:flex-start}
+.exec h2{font-size:12px;color:#8B96A8;letter-spacing:1px;text-transform:uppercase;margin-bottom:13px}
+.rbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.rbtns button{font-size:13px;font-weight:600;padding:10px 0;border-radius:7px;border:1.5px solid;cursor:pointer;transition:transform .12s}
+.rbtns button:hover{transform:translateY(-1px)}
+.rbtns button.on{outline:2px solid currentColor;outline-offset:1px}
+.rbtns kbd{font-size:10px;opacity:.5;margin-left:4px;font-family:inherit}
+.rb-pass{background:#14321F;color:#4ADE80;border-color:#1F4A32}
+.rb-fail{background:#33191C;color:#FF8A87;border-color:#4A2429}
+.rb-block{background:#33290F;color:#F0C75E;border-color:#4A3D17}
+.rb-na{background:#1C2430;color:#8B96A8;border-color:#2C3543}
+.auto{font-size:12px;color:#8B96A8;display:flex;align-items:center;gap:7px;margin-bottom:12px}
+.auto input{accent-color:#5B8CFF}
+.fld{margin-bottom:11px}
+.fld label{display:block;font-size:10.5px;font-weight:600;color:#5F6C82;margin-bottom:4px;letter-spacing:.4px}
+.fld input,.fld textarea{width:100%;font-size:12.5px;padding:8px 10px;border:1px solid #2C3543;border-radius:6px;background:#10141C;color:#E6EAF2;font-family:inherit;resize:none}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:#5B8CFF;box-shadow:0 0 0 2px rgba(91,140,255,.18)}
+.fld2{display:flex;gap:10px}
+.fld2 .fld{flex:1}
+
+/* 底部 */
+.navbar{background:#11151D;border-top:1px solid #1E2530;padding:9px 18px;display:flex;justify-content:center;align-items:center;gap:18px}
+.nb-btn{font-size:12px;padding:6px 16px;border:1px solid #2C3543;border-radius:6px;background:#131821;color:#C6CFDC;cursor:pointer}
+.nb-btn:hover{border-color:#5B8CFF;color:#7FA8FF}
+.nb-btn kbd{font-size:10px;opacity:.5;margin-left:4px;font-family:inherit}
+.nb-cnt{font-size:12px;font-weight:600;color:#8B96A8}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>02</b> 深色夜间 · 护眼 / 专注 / 类 IDE <span class="tag">落地成本：中</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><i></i>测试用例执行器<small>IND-1.14.2</small></div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn on">执行界面</button>
+    <button class="tb-btn">表格</button>
+    <button class="tb-btn">测试详情</button>
+    <div class="tb-sep"></div>
+    <select class="tb-sel"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option></select>
+    <button class="tb-btn">筛选</button>
+    <button class="tb-btn">下一条未测</button>
+    <div class="tb-right">
+      <button class="tb-btn primary">导出子任务</button>
+      <span class="tb-dot">● 已保存</span>
+    </div>
+  </header>
+
+  <div class="progress">
+    <div class="pbar"><span class="p" style="width:40%"></span><span class="f" style="width:4.4%"></span><span class="b" style="width:2.2%"></span><span class="n" style="width:4.4%"></span></div>
+    <div class="pinfo">已完成 <b id="doneNum">23</b> / 45 · 通过 18 · 失败 2 · 阻塞 1 · 跳过 2</div>
+  </div>
+
+  <div class="layout">
+    <nav class="modnav">
+      <h6>Modules</h6>
+      <div class="mod on"><span>倒车入库</span><span class="cnt">12</span></div>
+      <div class="mod"><span>回字形导航</span><span class="cnt">9</span></div>
+      <div class="mod"><span>绕障避让</span><span class="cnt">8</span></div>
+      <div class="mod"><span>脱困重试</span><span class="cnt">7</span></div>
+      <div class="mod"><span>急停恢复</span><span class="cnt">5</span></div>
+      <div class="mod"><span>任务调度</span><span class="cnt">4</span></div>
+    </nav>
+
+    <section class="case">
+      <div class="badges">
+        <span class="bd id">IND-1.14.2-DCRK-001</span>
+        <span class="bd kind">功能</span>
+        <span class="bd p0">P0</span>
+        <span class="bd risk">高风险</span>
+        <span class="bd mod">倒车入库</span>
+      </div>
+      <h1>倒车入库 — 目标车位识别与入库</h1>
+      <div class="msec">
+        <h2>前置条件</h2>
+        <p class="prec">机器人电量 ≥ 20%；场地车位线清晰；调度系统在线且已下发建图任务</p>
+      </div>
+      <div class="msec">
+        <h2>测试步骤</h2>
+        <ol>
+          <li>在调度界面下发“倒车入库”任务</li>
+          <li>机器人自动导航至目标车位前方约 1.5m 处</li>
+          <li>观察机器人倒车入库全程，记录停位偏差</li>
+        </ol>
+      </div>
+      <div class="msec">
+        <h2>预期结果</h2>
+        <ul>
+          <li>任务下发成功，机器人开始执行，状态置为“执行中”</li>
+          <li>机器人准确停入车位，左右距离误差 &lt; 5cm</li>
+          <li>入库完成，上报任务成功并回到待命状态</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside class="exec">
+      <h2>执行结果</h2>
+      <div class="rbtns">
+        <button class="rb-pass">通过<kbd>1</kbd></button>
+        <button class="rb-fail">失败<kbd>2</kbd></button>
+        <button class="rb-block">阻塞<kbd>3</kbd></button>
+        <button class="rb-na">跳过<kbd>4</kbd></button>
+      </div>
+      <label class="auto"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+      <div class="fld"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea></div>
+      <div class="fld2">
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷" /></div>
+      </div>
+      <div class="fld"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明或问题描述…"></textarea></div>
+    </aside>
+  </div>
+
+  <footer class="navbar">
+    <button class="nb-btn">← 上一条<kbd>←</kbd></button>
+    <span class="nb-cnt">23 / 45</span>
+    <button class="nb-btn">下一条 →<kbd>→</kbd></button>
+  </footer>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rb-pass',2:'.rb-fail',3:'.rb-block',4:'.rb-na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

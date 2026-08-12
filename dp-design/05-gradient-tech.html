@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>05 · 渐变科技 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;background:#0B1026;color:#DCE6FF}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(600px 400px at 85% -5%,rgba(124,92,255,.25),transparent 60%),
+             radial-gradient(700px 500px at 0% 110%,rgba(0,212,255,.16),transparent 60%)}
+
+.demo{position:relative;z-index:2;background:rgba(16,22,50,.7);border-bottom:1px solid rgba(0,212,255,.25);font-size:12px;padding:8px 18px;display:flex;gap:14px;align-items:center}
+.demo b{background:linear-gradient(90deg,#00D4FF,#7C5CFF);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.demo .tag{background:linear-gradient(90deg,#00D4FF,#7C5CFF);color:#04121F;border-radius:5px;padding:1px 9px;font-size:11px;font-weight:700}
+.demo span{color:#8FA2D0}
+
+.app{position:relative;z-index:1;max-width:1400px;margin:0 auto;min-height:calc(100vh - 34px);display:flex;flex-direction:column}
+
+/* 顶栏 */
+.topbar{background:rgba(16,22,50,.8);border-bottom:1px solid rgba(0,212,255,.22);padding:0 20px;height:54px;display:flex;align-items:center;gap:12px}
+.brand{font-weight:800;font-size:15px;letter-spacing:.5px;display:flex;align-items:center;gap:10px;
+  background:linear-gradient(90deg,#00D4FF,#7C5CFF);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.brand i{width:10px;height:10px;border-radius:3px;background:#00D4FF;box-shadow:0 0 10px #00D4FF;-webkit-text-fill-color:initial}
+.brand small{font-weight:400;font-size:10.5px;color:#6E7FA8;-webkit-text-fill-color:#6E7FA8}
+.tb-sep{width:1px;height:20px;background:rgba(0,212,255,.3)}
+.tb-btn{font-size:12px;background:none;border:1px solid transparent;color:#9FB0D9;padding:6px 12px;border-radius:7px;cursor:pointer}
+.tb-btn:hover{color:#fff;background:rgba(0,212,255,.08)}
+.tb-btn.on{color:#6BE3FF;background:rgba(0,212,255,.13);box-shadow:inset 0 0 0 1px rgba(0,212,255,.4);font-weight:600}
+.tb-btn.primary{background:linear-gradient(90deg,#00D4FF,#7C5CFF);color:#04121F;font-weight:700;border:none;box-shadow:0 4px 18px rgba(0,212,255,.4)}
+.tb-btn.primary:hover{filter:brightness(1.1)}
+.tb-sel{background:rgba(16,22,50,.9);border:1px solid rgba(0,212,255,.3);border-radius:7px;font-size:12px;padding:6px 10px;color:#C6D6F5}
+.tb-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.tb-save{font-size:11px;color:#4DF0BE;background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.35);border-radius:20px;padding:4px 12px}
+
+/* 仪表盘卡片 */
+.dash-wrap{background:rgba(255,255,255,.045);border:1px solid rgba(0,212,255,.2);border-radius:14px;margin:16px 20px 0;padding:16px 22px;display:flex;align-items:center;gap:24px;box-shadow:0 0 30px rgba(0,212,255,.06)}
+.dash-ring{width:86px;height:86px;border-radius:50%;flex-shrink:0;position:relative;
+  background:conic-gradient(#00E5A0 0 40%,#FF5C8A 40% 44.4%,#F7D51D 44.4% 46.6%,rgba(140,155,200,.25) 46.6% 100%);
+  display:flex;align-items:center;justify-content:center;box-shadow:0 0 22px rgba(0,212,255,.25)}
+.dash-ring::before{content:"";position:absolute;inset:9px;border-radius:50%;background:#0E1430}
+.dash-ring .val{position:relative;z-index:1;font-size:18px;font-weight:800;color:#6BE3FF}
+.dash-ring .val small{display:block;font-size:9px;color:#8FA2D0;text-align:center;font-weight:400}
+.dash-stats{display:flex;gap:26px;flex:1;flex-wrap:wrap}
+.dstat b{font-size:20px;font-weight:800;display:block}
+.dstat span{font-size:11px;color:#8FA2D0}
+.dstat.p b{color:#4DF0BE}.dstat.f b{color:#FF7AB8}.dstat.b b{color:#F7E25C}.dstat.n b{color:#8FA2D0}
+.dash-pct{margin-left:auto;text-align:right}
+.dash-pct b{font-size:26px;background:linear-gradient(90deg,#00D4FF,#7C5CFF);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.dash-pct span{font-size:11px;color:#8FA2D0;display:block}
+
+/* 布局 */
+.layout{flex:1;display:flex;gap:16px;padding:16px 20px;min-height:0}
+
+/* 阅读 */
+.case{flex:1;min-width:0;background:rgba(255,255,255,.05);border:1px solid rgba(0,212,255,.22);border-radius:14px;padding:22px 26px;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}
+.bd{font-size:11px;padding:4px 11px;border-radius:6px;font-weight:600;background:rgba(255,255,255,.07);color:#B9C8EC;border:1px solid rgba(255,255,255,.1)}
+.bd.id{background:rgba(0,212,255,.13);color:#6BE3FF;border-color:rgba(0,212,255,.35);font-family:Consolas,monospace}
+.bd.kind{background:rgba(0,229,160,.12);color:#4DF0BE;border-color:rgba(0,229,160,.3)}
+.bd.p0{background:rgba(255,46,154,.15);color:#FF7AB8;border-color:rgba(255,46,154,.42)}
+.bd.risk{background:rgba(255,122,62,.12);color:#FFA366;border-color:rgba(255,122,62,.35)}
+.bd.mod{background:rgba(124,92,255,.15);color:#B49AFF;border-color:rgba(124,92,255,.4)}
+.case h1{font-size:21px;margin-bottom:16px;line-height:1.4;color:#F0F6FF;text-shadow:0 0 24px rgba(0,212,255,.18)}
+.msec{margin-bottom:16px}
+.msec h2{font-size:12.5px;font-weight:600;color:#C6D6F5;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.msec h2::before{content:"";width:5px;height:14px;background:linear-gradient(180deg,#00D4FF,#7C5CFF);border-radius:3px;box-shadow:0 0 8px rgba(0,212,255,.5)}
+.msec p,.msec li{font-size:13.5px;line-height:1.9;color:#B9C8EC}
+.msec ol,.msec ul{padding-left:22px}
+.msec li::marker{color:#00D4FF;font-weight:700}
+.prec{background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.18);border-radius:10px;padding:11px 15px}
+
+/* 执行 */
+.exec{width:322px;flex-shrink:0;background:rgba(255,255,255,.05);border:1px solid rgba(124,92,255,.25);border-radius:14px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.3);align-self:flex-start}
+.exec h2{font-size:12.5px;font-weight:600;color:#C6D6F5;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.exec h2::before{content:"";width:5px;height:14px;background:linear-gradient(180deg,#7C5CFF,#00D4FF);border-radius:3px}
+.rbtns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:13px}
+.rbtns button{font-size:13px;font-weight:600;padding:11px 0;border-radius:10px;border:1.5px solid;cursor:pointer;transition:transform .14s}
+.rbtns button:hover{transform:translateY(-1px)}
+.rbtns button.on{box-shadow:0 0 16px rgba(0,212,255,.4),inset 0 0 8px rgba(0,212,255,.1);transform:translateY(-1px)}
+.rbtns kbd{font-size:10px;opacity:.5;margin-left:4px;font-family:inherit}
+.rb-pass{background:rgba(0,229,160,.1);color:#4DF0BE;border-color:rgba(0,229,160,.4)}
+.rb-fail{background:rgba(255,46,154,.1);color:#FF7AB8;border-color:rgba(255,46,154,.45)}
+.rb-block{background:rgba(247,213,29,.09);color:#F7E25C;border-color:rgba(247,213,29,.4)}
+.rb-na{background:rgba(140,155,200,.08);color:#8FA2D0;border-color:rgba(140,155,200,.25)}
+.auto{font-size:12px;color:#8FA2D0;display:flex;align-items:center;gap:7px;margin-bottom:13px}
+.auto input{accent-color:#00D4FF}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:11px;font-weight:600;color:#8FA2D0;margin-bottom:5px}
+.fld input,.fld textarea{width:100%;font-size:12.5px;padding:9px 11px;border:1px solid rgba(0,212,255,.25);border-radius:9px;background:rgba(10,14,32,.7);color:#DCE6FF;font-family:inherit;resize:none}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:#00D4FF;box-shadow:0 0 0 2px rgba(0,212,255,.18)}
+.fld2{display:flex;gap:10px}
+.fld2 .fld{flex:1}
+
+/* 底部 */
+.navbar{background:rgba(13,18,42,.85);border-top:1px solid rgba(0,212,255,.22);padding:10px 20px;display:flex;justify-content:center;align-items:center;gap:20px}
+.nb-btn{font-size:12.5px;padding:8px 20px;border-radius:9px;border:1px solid rgba(0,212,255,.35);background:rgba(255,255,255,.05);color:#9FD8F0;cursor:pointer}
+.nb-btn:hover{color:#04121F;background:linear-gradient(90deg,#00D4FF,#7C5CFF);border-color:transparent}
+.nb-btn kbd{font-size:10px;opacity:.55;margin-left:4px;font-family:inherit}
+.nb-cnt{font-size:12.5px;font-weight:700;color:#8FA2D0}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>05</b> 渐变科技 · 未来感 / 数据可视化友好 <span class="tag">落地成本：中</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><i></i>测试用例执行器<small>IND-1.14.2 · 工业回归</small></div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn on">执行界面</button>
+    <button class="tb-btn">表格</button>
+    <button class="tb-btn">测试详情</button>
+    <div class="tb-sep"></div>
+    <select class="tb-sel"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option></select>
+    <button class="tb-btn">筛选</button>
+    <button class="tb-btn">下一条未测</button>
+    <div class="tb-right">
+      <button class="tb-btn primary">导出子任务</button>
+      <span class="tb-save">已保存</span>
+    </div>
+  </header>
+
+  <!-- 环形仪表盘 -->
+  <div class="dash-wrap">
+    <div class="dash-ring"><div class="val">51%<small>已完成</small></div></div>
+    <div class="dash-stats">
+      <div class="dstat p"><b>18</b><span>通过</span></div>
+      <div class="dstat f"><b>2</b><span>失败</span></div>
+      <div class="dstat b"><b>1</b><span>阻塞</span></div>
+      <div class="dstat n"><b>2</b><span>跳过</span></div>
+    </div>
+    <div class="dash-pct"><b id="doneNum">23</b><span>/ 45 已完成 · 本轮 v1.14.2</span></div>
+  </div>
+
+  <div class="layout">
+    <section class="case">
+      <div class="badges">
+        <span class="bd id">IND-1.14.2-DCRK-001</span>
+        <span class="bd kind">功能</span>
+        <span class="bd p0">P0</span>
+        <span class="bd risk">高风险</span>
+        <span class="bd mod">倒车入库</span>
+      </div>
+      <h1>倒车入库 — 目标车位识别与入库</h1>
+      <div class="msec">
+        <h2>前置条件</h2>
+        <p class="prec">机器人电量 ≥ 20%；场地车位线清晰；调度系统在线且已下发建图任务</p>
+      </div>
+      <div class="msec">
+        <h2>测试步骤</h2>
+        <ol>
+          <li>在调度界面下发“倒车入库”任务</li>
+          <li>机器人自动导航至目标车位前方约 1.5m 处</li>
+          <li>观察机器人倒车入库全程，记录停位偏差</li>
+        </ol>
+      </div>
+      <div class="msec">
+        <h2>预期结果</h2>
+        <ul>
+          <li>任务下发成功，机器人开始执行，状态置为“执行中”</li>
+          <li>机器人准确停入车位，左右距离误差 &lt; 5cm</li>
+          <li>入库完成，上报任务成功并回到待命状态</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside class="exec">
+      <h2>执行结果</h2>
+      <div class="rbtns">
+        <button class="rb-pass">通过<kbd>1</kbd></button>
+        <button class="rb-fail">失败<kbd>2</kbd></button>
+        <button class="rb-block">阻塞<kbd>3</kbd></button>
+        <button class="rb-na">跳过<kbd>4</kbd></button>
+      </div>
+      <label class="auto"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+      <div class="fld"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea></div>
+      <div class="fld2">
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷" /></div>
+      </div>
+      <div class="fld"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明或问题描述…"></textarea></div>
+    </aside>
+  </div>
+
+  <footer class="navbar">
+    <button class="nb-btn">← 上一条<kbd>←</kbd></button>
+    <span class="nb-cnt">23 / 45</span>
+    <button class="nb-btn">下一条 →<kbd>→</kbd></button>
+  </footer>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rb-pass',2:'.rb-fail',3:'.rb-block',4:'.rb-na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

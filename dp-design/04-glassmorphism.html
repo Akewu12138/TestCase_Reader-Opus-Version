@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>04 · 玻璃拟态 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+  background:linear-gradient(135deg,#D8E7F8 0%,#EFE4FB 48%,#DFF5EC 100%);
+  background-attachment:fixed;color:#2A3350}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(circle at 12% 18%,rgba(124,92,255,.14),transparent 42%),
+             radial-gradient(circle at 88% 82%,rgba(52,199,123,.14),transparent 42%),
+             radial-gradient(circle at 78% 12%,rgba(64,156,255,.12),transparent 40%)}
+
+.demo{position:relative;z-index:2;background:rgba(255,255,255,.4);backdrop-filter:blur(16px);font-size:12px;padding:8px 18px;display:flex;gap:14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.55)}
+.demo b{color:#3A3355}
+.demo .tag{background:rgba(124,92,255,.85);color:#fff;border-radius:6px;padding:2px 10px;font-size:11px}
+.demo span{color:#6A6F8E}
+
+.app{position:relative;z-index:1;max-width:1360px;margin:0 auto;min-height:calc(100vh - 36px);display:flex;flex-direction:column;padding:18px}
+
+/* 玻璃顶栏 */
+.topbar{background:rgba(255,255,255,.48);backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.7);border-radius:18px;padding:10px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(90,80,160,.10)}
+.brand{font-weight:700;font-size:14.5px;display:flex;align-items:center;gap:9px}
+.brand i{width:10px;height:10px;border-radius:4px;background:linear-gradient(135deg,#7C5CFF,#4FC3F7);box-shadow:0 4px 12px rgba(124,92,255,.4)}
+.brand small{font-weight:400;font-size:11px;color:#6A6F8E}
+.tb-sep{width:1px;height:20px;background:rgba(120,130,160,.25)}
+.tb-btn{font-size:12px;background:none;border:1px solid transparent;color:#3A4466;padding:6px 12px;border-radius:10px;cursor:pointer}
+.tb-btn:hover{background:rgba(255,255,255,.6)}
+.tb-btn.on{background:rgba(124,92,255,.14);color:#5B3FD4;font-weight:600}
+.tb-btn.primary{background:rgba(124,92,255,.92);color:#fff;font-weight:600;box-shadow:0 8px 22px rgba(124,92,255,.35)}
+.tb-btn.primary:hover{background:#6D4FE8}
+.tb-sel{background:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.8);border-radius:10px;font-size:12px;padding:6px 10px;color:#2A3350}
+.tb-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.tb-save{font-size:11.5px;color:#1E8E4E;background:rgba(52,199,123,.16);border:1px solid rgba(52,199,123,.35);border-radius:20px;padding:4px 12px}
+
+/* 玻璃进度 */
+.progress{background:rgba(255,255,255,.38);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.55);border-radius:14px;margin-top:14px;padding:10px 16px;display:flex;align-items:center;gap:14px}
+.pbar{flex:1;height:9px;background:rgba(255,255,255,.6);border-radius:6px;overflow:hidden;display:flex}
+.pbar span{height:100%}
+.pbar .p{background:#34C77B}.pbar .f{background:#FF5D73}.pbar .b{background:#FFB23E}.pbar .n{background:rgba(120,130,160,.35)}
+.pinfo{font-size:11.5px;color:#55607F;white-space:nowrap}
+.pinfo b{color:#2A3350}
+
+/* 布局 */
+.layout{flex:1;display:flex;gap:16px;margin-top:14px;min-height:0}
+
+/* 玻璃阅读卡 */
+.case{flex:1;min-width:0;background:rgba(255,255,255,.5);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.75);border-radius:20px;padding:24px 28px;box-shadow:0 8px 32px rgba(90,80,160,.10);overflow:auto}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}
+.bd{font-size:11px;padding:4px 12px;border-radius:8px;font-weight:600;background:rgba(255,255,255,.6);color:#3A4466}
+.bd.id{background:rgba(124,92,255,.15);color:#5B3FD4;font-family:Consolas,monospace}
+.bd.kind{background:rgba(52,199,123,.14);color:#1E8E4E}
+.bd.p0{background:rgba(255,93,115,.13);color:#D63A54}
+.bd.risk{background:rgba(255,150,60,.16);color:#D97706}
+.bd.mod{background:rgba(124,92,255,.11);color:#6D3FD6}
+.case h1{font-size:21px;margin-bottom:16px;line-height:1.4}
+.msec{margin-bottom:16px}
+.msec h2{font-size:13px;font-weight:600;color:#3A3355;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.msec h2::before{content:"";width:5px;height:14px;background:linear-gradient(180deg,#7C5CFF,#4FC3F7);border-radius:3px}
+.msec p,.msec li{font-size:13.5px;line-height:1.9;color:#3A4466}
+.msec ol,.msec ul{padding-left:22px}
+.msec li::marker{color:#7C5CFF;font-weight:700}
+.prec{background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.6);border-radius:12px;padding:11px 15px}
+
+/* 玻璃执行卡 */
+.exec{width:322px;flex-shrink:0;background:rgba(255,255,255,.5);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.75);border-radius:20px;padding:20px;box-shadow:0 8px 32px rgba(90,80,160,.10);align-self:flex-start}
+.exec h2{font-size:13px;font-weight:600;color:#3A3355;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.exec h2::before{content:"";width:5px;height:14px;background:linear-gradient(180deg,#4FC3F7,#7C5CFF);border-radius:3px}
+.rbtns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:13px}
+.rbtns button{font-size:13px;font-weight:600;padding:11px 0;border-radius:12px;border:1.5px solid;cursor:pointer;transition:transform .14s,box-shadow .14s}
+.rbtns button:hover{transform:translateY(-1px)}
+.rbtns button.on{box-shadow:0 6px 18px rgba(90,80,160,.16);transform:translateY(-1px)}
+.rbtns kbd{font-size:10px;opacity:.55;margin-left:4px;font-family:inherit}
+.rb-pass{background:rgba(52,199,123,.15);color:#17935C;border-color:rgba(52,199,123,.35)}
+.rb-fail{background:rgba(255,93,115,.13);color:#D63A54;border-color:rgba(255,93,115,.35)}
+.rb-block{background:rgba(255,178,62,.18);color:#B8760F;border-color:rgba(255,178,62,.4)}
+.rb-na{background:rgba(120,130,160,.1);color:#6B7590;border-color:rgba(120,130,160,.22)}
+.auto{font-size:12px;color:#55607F;display:flex;align-items:center;gap:7px;margin-bottom:13px}
+.auto input{accent-color:#7C5CFF}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:11px;font-weight:600;color:#55607F;margin-bottom:5px}
+.fld input,.fld textarea{width:100%;font-size:12.5px;padding:9px 11px;border:1px solid rgba(255,255,255,.85);border-radius:11px;background:rgba(255,255,255,.62);color:#2A3350;font-family:inherit;resize:none}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:rgba(124,92,255,.5);box-shadow:0 0 0 3px rgba(124,92,255,.14)}
+.fld2{display:flex;gap:10px}
+.fld2 .fld{flex:1}
+
+/* 底部 */
+.navbar{margin-top:14px;background:rgba(255,255,255,.38);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.55);border-radius:16px;padding:10px 16px;display:flex;justify-content:center;align-items:center;gap:18px}
+.nb-btn{font-size:12.5px;padding:8px 20px;border-radius:11px;border:1px solid rgba(255,255,255,.9);background:rgba(255,255,255,.6);color:#2A3350;cursor:pointer}
+.nb-btn:hover{background:rgba(124,92,255,.16);color:#5B3FD4}
+.nb-btn kbd{font-size:10px;opacity:.55;margin-left:4px;font-family:inherit}
+.nb-cnt{font-size:12.5px;font-weight:600;color:#55607F}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>04</b> 玻璃拟态 · 通透 / 现代 / 轻量 <span class="tag">落地成本：中</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><i></i>测试用例执行器<small>IND-1.14.2</small></div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn on">执行界面</button>
+    <button class="tb-btn">表格</button>
+    <button class="tb-btn">测试详情</button>
+    <div class="tb-sep"></div>
+    <select class="tb-sel"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option></select>
+    <button class="tb-btn">筛选</button>
+    <button class="tb-btn">下一条未测</button>
+    <div class="tb-right">
+      <button class="tb-btn primary">导出子任务</button>
+      <span class="tb-save">已保存</span>
+    </div>
+  </header>
+
+  <div class="progress">
+    <div class="pbar"><span class="p" style="width:40%"></span><span class="f" style="width:4.4%"></span><span class="b" style="width:2.2%"></span><span class="n" style="width:4.4%"></span></div>
+    <div class="pinfo">已完成 <b id="doneNum">23</b> / 45 · 通过 18 · 失败 2 · 阻塞 1 · 跳过 2</div>
+  </div>
+
+  <div class="layout">
+    <section class="case">
+      <div class="badges">
+        <span class="bd id">IND-1.14.2-DCRK-001</span>
+        <span class="bd kind">功能</span>
+        <span class="bd p0">P0</span>
+        <span class="bd risk">高风险</span>
+        <span class="bd mod">倒车入库</span>
+      </div>
+      <h1>倒车入库 — 目标车位识别与入库</h1>
+      <div class="msec">
+        <h2>前置条件</h2>
+        <p class="prec">机器人电量 ≥ 20%；场地车位线清晰；调度系统在线且已下发建图任务</p>
+      </div>
+      <div class="msec">
+        <h2>测试步骤</h2>
+        <ol>
+          <li>在调度界面下发“倒车入库”任务</li>
+          <li>机器人自动导航至目标车位前方约 1.5m 处</li>
+          <li>观察机器人倒车入库全程，记录停位偏差</li>
+        </ol>
+      </div>
+      <div class="msec">
+        <h2>预期结果</h2>
+        <ul>
+          <li>任务下发成功，机器人开始执行，状态置为“执行中”</li>
+          <li>机器人准确停入车位，左右距离误差 &lt; 5cm</li>
+          <li>入库完成，上报任务成功并回到待命状态</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside class="exec">
+      <h2>执行结果</h2>
+      <div class="rbtns">
+        <button class="rb-pass">通过<kbd>1</kbd></button>
+        <button class="rb-fail">失败<kbd>2</kbd></button>
+        <button class="rb-block">阻塞<kbd>3</kbd></button>
+        <button class="rb-na">跳过<kbd>4</kbd></button>
+      </div>
+      <label class="auto"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+      <div class="fld"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea></div>
+      <div class="fld2">
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷" /></div>
+      </div>
+      <div class="fld"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明或问题描述…"></textarea></div>
+    </aside>
+  </div>
+
+  <footer class="navbar">
+    <button class="nb-btn">← 上一条<kbd>←</kbd></button>
+    <span class="nb-cnt">23 / 45</span>
+    <button class="nb-btn">下一条 →<kbd>→</kbd></button>
+  </footer>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rb-pass',2:'.rb-fail',3:'.rb-block',4:'.rb-na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

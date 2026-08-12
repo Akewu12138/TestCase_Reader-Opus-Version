@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>07 · 数据表格风 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;background:#F7F8FA;color:#1E2633;font-size:13px}
+
+.demo{background:#fff;border-bottom:1px solid #DDE2EA;font-size:12px;padding:7px 18px;display:flex;gap:14px;align-items:center}
+.demo b{color:#1E2633}
+.demo .tag{background:#3B6FB8;color:#fff;border-radius:3px;padding:1px 8px;font-size:11px}
+.demo span{color:#6B7A90}
+
+.app{max-width:1480px;margin:0 auto;min-height:calc(100vh - 30px);display:flex;flex-direction:column}
+
+/* 顶栏 */
+.topbar{background:#fff;border-bottom:1px solid #DDE2EA;padding:0 14px;height:44px;display:flex;align-items:center;gap:10px}
+.brand{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.brand i{width:9px;height:9px;background:#3B6FB8}
+.brand small{font-weight:400;font-size:10.5px;color:#8A97A8;font-family:Consolas,monospace}
+.tb-btn{font-size:11.5px;background:#fff;border:1px solid #DDE2EA;color:#4A5568;padding:4px 9px;border-radius:3px;cursor:pointer}
+.tb-btn:hover{background:#F0F2F6}
+.tb-btn.on{background:#3B6FB8;color:#fff;border-color:#3B6FB8;font-weight:600}
+.tb-btn.primary{background:#3B6FB8;color:#fff;border-color:#3B6FB8;font-weight:600}
+.tb-sel{border:1px solid #DDE2EA;border-radius:3px;font-size:11.5px;padding:4px 6px;background:#fff;color:#333}
+.tb-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tb-stat{font-size:11px;color:#6B7A90;font-variant-numeric:tabular-nums}
+
+/* 状态汇总条 */
+.summary{background:#fff;border-bottom:1px solid #DDE2EA;padding:7px 14px;display:flex;align-items:center;gap:18px;font-size:11.5px}
+.sm{display:flex;align-items:center;gap:6px;color:#55627A;font-variant-numeric:tabular-nums}
+.sm i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.sm.p i{background:#1E9E54}.sm.f i{background:#D64545}.sm.b i{background:#D99A1E}.sm.n i{background:#B9C2CE}
+.sm b{color:#1E2633}
+.sm-bar{flex:1;height:6px;background:#EDF0F4;display:flex;overflow:hidden;border-radius:2px}
+.sm-bar span{height:100%}
+.sm-bar .p{background:#1E9E54}.sm-bar .f{background:#D64545}.sm-bar .b{background:#D99A1E}.sm-bar .n{background:#B9C2CE}
+
+/* 布局：表格 + 执行 */
+.layout{flex:1;display:flex;min-height:0;padding:12px 14px;gap:12px}
+
+/* 用例表格 */
+.grid{flex:1;min-width:0;background:#fff;border:1px solid #DDE2EA;display:flex;flex-direction:column}
+.grid-head{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid #DDE2EA}
+.grid-head h1{font-size:14px;font-weight:600}
+.grid-head .g-sub{font-size:11px;color:#6B7A90;font-family:Consolas,monospace}
+.table{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead th{position:sticky;top:0;background:#F0F2F6;border-bottom:1px solid #DDE2EA;color:#55627A;font-size:11px;font-weight:600;text-align:left;padding:7px 10px;white-space:nowrap}
+tbody td{border-bottom:1px solid #EDF0F4;padding:7px 10px;vertical-align:middle}
+tbody tr:nth-child(even){background:#FAFBFC}
+tbody tr:hover{background:#F0F6FF}
+tbody tr.cur{background:#E8F1FC;box-shadow:inset 3px 0 0 #3B6FB8}
+td.mono{font-family:Consolas,monospace;font-size:11.5px;color:#2C5FA8;white-space:nowrap}
+td.title{color:#1E2633;font-weight:500}
+td.mod{font-size:11px;color:#5E46A1}
+.st{display:inline-block;font-size:11px;padding:1px 8px;border-radius:2px;font-weight:600;border:1px solid}
+.st.pass{background:#E9F8EF;color:#1E9E54;border-color:#BFE3CF}
+.st.fail{background:#FCEAEA;color:#C0392B;border-color:#F3CFCF}
+.st.block{background:#FCF6E6;color:#9A6D0B;border-color:#F0E2BB}
+.st.na{background:#F4F6F9;color:#6B7A90;border-color:#E5E9F0}
+td.prio{font-size:11px;font-weight:700}
+.prio.p0{color:#C0392B}.prio.p1{color:#9A6D0B}.prio.p2{color:#6B7A90}
+td.done{font-family:Consolas,monospace;font-size:11px;color:#6B7A90}
+
+/* 右侧执行 */
+.exec{width:320px;flex-shrink:0;background:#fff;border:1px solid #DDE2EA;padding:14px;display:flex;flex-direction:column}
+.exec h2{font-size:11px;color:#6B7A90;letter-spacing:.8px;text-transform:uppercase;margin-bottom:11px;font-weight:600}
+.rbtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:11px}
+.rbtns button{font-size:12px;font-weight:600;padding:8px 0;border:1px solid #DDE2EA;background:#fff;border-radius:3px;cursor:pointer}
+.rbtns button:hover{background:#F7F8FA}
+.rbtns button.on{background:currentColor;color:#fff;border-color:currentColor}
+.rbtns kbd{font-size:9px;opacity:.55;margin-left:3px;font-family:inherit}
+.rb-pass{color:#1E9E54}.rb-fail{color:#D64545}.rb-block{color:#C98A1B}.rb-na{color:#6B7A90}
+.auto{font-size:11.5px;color:#55627A;display:flex;align-items:center;gap:6px;margin-bottom:11px}
+.auto input{accent-color:#3B6FB8}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:10.5px;font-weight:600;color:#6B7A90;margin-bottom:4px}
+.fld input,.fld textarea{width:100%;font-size:12px;padding:6px 8px;border:1px solid #DDE2EA;border-radius:3px;background:#fff;font-family:inherit;resize:none;color:#1E2633}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:#3B6FB8;box-shadow:0 0 0 2px rgba(59,111,184,.14)}
+.fld2{display:flex;gap:8px}
+.fld2 .fld{flex:1}
+
+/* 底部 */
+.navbar{background:#fff;border-top:1px solid #DDE2EA;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.nb-btn{font-size:12px;padding:6px 14px;border:1px solid #DDE2EA;background:#fff;border-radius:3px;color:#4A5568;cursor:pointer}
+.nb-btn:hover{border-color:#3B6FB8;color:#3B6FB8}
+.nb-btn kbd{font-size:9px;opacity:.55;margin-left:3px;font-family:inherit}
+.nb-cnt{font-size:12px;font-weight:600;color:#55627A;font-variant-numeric:tabular-nums}
+.nb-right{display:flex;gap:8px;align-items:center}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>07</b> 数据表格风 · Excel 基因 / 批量执行 / 极致密度 <span class="tag">落地成本：低</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><i></i>测试用例执行器<small>IND-1.14.2_工业回归.xlsx</small></div>
+    <button class="tb-btn on">执行界面</button>
+    <button class="tb-btn">表格视图</button>
+    <button class="tb-btn">测试详情</button>
+    <select class="tb-sel"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option></select>
+    <button class="tb-btn">筛选</button>
+    <button class="tb-btn">下一条未测</button>
+    <div class="tb-right">
+      <button class="tb-btn primary">导出子任务</button>
+      <span class="tb-stat">上次保存 10:24:31</span>
+    </div>
+  </header>
+
+  <div class="summary">
+    <div class="sm"><i class="p"></i>通过 <b>18</b></div>
+    <div class="sm"><i class="f"></i>失败 <b>2</b></div>
+    <div class="sm"><i class="b"></i>阻塞 <b>1</b></div>
+    <div class="sm"><i class="n"></i>跳过 <b>2</b></div>
+    <div class="sm-bar"><span class="p" style="width:40%"></span><span class="f" style="width:4.4%"></span><span class="b" style="width:2.2%"></span><span class="n" style="width:4.4%"></span></div>
+    <div class="sm">已完成 <b id="doneNum">23</b> / 45</div>
+  </div>
+
+  <div class="layout">
+    <section class="grid">
+      <div class="grid-head">
+        <h1>倒车入库 DCRK</h1>
+        <span class="g-sub">12 条用例 · 全部 45 条</span>
+      </div>
+      <div class="table">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:180px">用例编号</th>
+              <th>标题</th>
+              <th style="width:90px">优先级</th>
+              <th style="width:70px">状态</th>
+              <th style="width:90px">用时</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="cur"><td class="mono">IND-1.14.2-DCRK-001</td><td class="title">倒车入库 — 目标车位识别与入库</td><td class="prio p0">P0</td><td><span class="st pass">通过</span></td><td class="done">00:01:12</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-002</td><td class="title">车位被占时放弃入库并重新规划</td><td class="prio p0">P0</td><td><span class="st pass">通过</span></td><td class="done">00:00:58</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-003</td><td class="title">入库途中激光失联自动急停</td><td class="prio p0">P0</td><td><span class="st fail">失败</span></td><td class="done">00:02:04</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-004</td><td class="title">连续三次入库失败后上报异常</td><td class="prio p1">P1</td><td><span class="st block">阻塞</span></td><td class="done">—</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-005</td><td class="title">入库任务下发时机器人电量低于 15%</td><td class="prio p1">P1</td><td><span class="st pass">通过</span></td><td class="done">00:01:40</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-006</td><td class="title">入库完成回桩充电衔接</td><td class="prio p1">P1</td><td><span class="st pass">通过</span></td><td class="done">00:01:25</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-007</td><td class="title">窄车位（宽 1.1m）极限入库</td><td class="prio p1">P1</td><td><span class="st na">跳过</span></td><td class="done">—</td></tr>
+            <tr><td class="mono">IND-1.14.2-DCRK-008</td><td class="title">障碍物在车位中央时的避让入库</td><td class="prio p2">P2</td><td><span class="st pass">通过</span></td><td class="done">00:01:02</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="exec">
+      <h2>执行结果 · 当前用例</h2>
+      <div class="rbtns">
+        <button class="rb-pass">通过<kbd>1</kbd></button>
+        <button class="rb-fail">失败<kbd>2</kbd></button>
+        <button class="rb-block">阻塞<kbd>3</kbd></button>
+        <button class="rb-na">跳过<kbd>4</kbd></button>
+      </div>
+      <label class="auto"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+      <div class="fld"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea></div>
+      <div class="fld2">
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷" /></div>
+      </div>
+      <div class="fld"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明或问题描述…"></textarea></div>
+    </aside>
+  </div>
+
+  <footer class="navbar">
+    <div><button class="nb-btn">← 上一条<kbd>←</kbd></button> <button class="nb-btn">下一条 →<kbd>→</kbd></button></div>
+    <span class="nb-cnt">第 23 / 45 条</span>
+    <div class="nb-right"><span class="nb-cnt">选中的 1 条</span><button class="nb-btn primary" style="background:#3B6FB8;color:#fff;border-color:#3B6FB8">批量通过</button></div>
+  </footer>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rb-pass',2:'.rb-fail',3:'.rb-block',4:'.rb-na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

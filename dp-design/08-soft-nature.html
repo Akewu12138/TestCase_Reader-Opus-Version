@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>08 · 自然柔和 — 测试用例执行器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;background:#F5F7F2;color:#3D4438}
+
+.demo{background:#EDF1E8;font-size:12px;padding:8px 18px;display:flex;gap:14px;align-items:center;border-bottom:1px solid #E0E6D7}
+.demo b{color:#3D4438}
+.demo .tag{background:#4E9A62;color:#fff;border-radius:6px;padding:2px 10px;font-size:11px}
+.demo span{color:#7A8474}
+
+.app{max-width:1400px;margin:0 auto;min-height:calc(100vh - 34px);display:flex;flex-direction:column}
+
+/* 顶栏 */
+.topbar{background:#fff;border-bottom:1px solid #E7ECDF;padding:0 22px;height:54px;display:flex;align-items:center;gap:14px}
+.brand{font-weight:700;font-size:15px;display:flex;align-items:center;gap:9px;color:#3D4438}
+.brand i{width:10px;height:10px;border-radius:50%;background:#4E9A62}
+.brand small{font-weight:400;font-size:11px;color:#8A9182}
+.tb-sep{width:1px;height:20px;background:#E4E9DC}
+.tb-btn{font-size:12px;background:none;border:1px solid transparent;color:#67705F;padding:6px 13px;border-radius:9px;cursor:pointer}
+.tb-btn:hover{background:#F3F6EF;color:#3D4438}
+.tb-btn.on{background:#EAF3EC;color:#3E7D4F;font-weight:600}
+.tb-btn.primary{background:#4E9A62;color:#fff;font-weight:600;box-shadow:0 3px 10px rgba(78,154,98,.28)}
+.tb-btn.primary:hover{background:#418B55}
+.tb-sel{border:1px solid #DDE3D4;border-radius:9px;font-size:12px;padding:6px 10px;background:#fff;color:#3D4438}
+.tb-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.tb-save{font-size:11.5px;color:#3E7D4F;background:#EAF3EC;border:1px solid #CBE2D1;border-radius:20px;padding:4px 13px}
+
+/* 进度 */
+.progress{background:#fff;border-bottom:1px solid #EFF3EA;padding:9px 22px;display:flex;align-items:center;gap:14px}
+.pbar{flex:1;height:8px;background:#E8EDE4;border-radius:5px;overflow:hidden;display:flex}
+.pbar span{height:100%}
+.pbar .p{background:#55A668}.pbar .f{background:#D97B6B}.pbar .b{background:#D9A94E}.pbar .n{background:#C6CDBE}
+.pinfo{font-size:11.5px;color:#7A8474;white-space:nowrap}
+.pinfo b{color:#3D4438}
+
+/* 布局 */
+.layout{flex:1;display:flex;gap:18px;padding:18px 22px;min-height:0}
+
+/* 阅读卡 */
+.case{flex:1;min-width:0;background:#fff;border:1px solid #E9EEE4;border-radius:14px;padding:26px 30px;overflow:auto;box-shadow:0 4px 16px rgba(90,110,80,.07)}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.bd{font-size:11px;padding:4px 12px;border-radius:7px;font-weight:600;background:#F3F6F0;color:#5D6657}
+.bd.id{background:#EAF3EC;color:#3E7D4F;font-family:Consolas,monospace}
+.bd.kind{background:#F0F6F1;color:#4E9A62}
+.bd.p0{background:#FBEDE9;color:#C05A48}
+.bd.risk{background:#FBF1E3;color:#C0813B}
+.bd.mod{background:#F0EDF8;color:#6D5DA8}
+.case h1{font-size:22px;margin-bottom:18px;line-height:1.4;color:#363C32}
+.msec{margin-bottom:18px}
+.msec h2{font-size:13px;font-weight:600;color:#4A5244;display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.msec h2::before{content:"";width:5px;height:14px;background:#4E9A62;border-radius:3px}
+.msec p,.msec li{font-size:13.5px;line-height:1.95;color:#4A5244}
+.msec ol,.msec ul{padding-left:22px}
+.msec li::marker{color:#4E9A62;font-weight:700}
+.prec{background:#F7F9F3;border:1px solid #E7ECDF;border-radius:10px;padding:11px 15px}
+
+/* 执行卡 */
+.exec{width:322px;flex-shrink:0;background:#fff;border:1px solid #E9EEE4;border-radius:14px;padding:20px;box-shadow:0 4px 16px rgba(90,110,80,.07);align-self:flex-start}
+.exec h2{font-size:13px;font-weight:600;color:#4A5244;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.exec h2::before{content:"";width:5px;height:14px;background:#4E9A62;border-radius:3px}
+.rbtns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:13px}
+.rbtns button{font-size:13px;font-weight:600;padding:11px 0;border-radius:11px;border:1.5px solid;cursor:pointer;transition:transform .12s}
+.rbtns button:hover{transform:translateY(-1px)}
+.rbtns button.on{outline:2px solid currentColor;outline-offset:1px}
+.rbtns kbd{font-size:10px;opacity:.55;margin-left:4px;font-family:inherit}
+.rb-pass{background:#EAF3EC;color:#3E7D4F;border-color:#CBE2D1}
+.rb-fail{background:#FBEDE9;color:#C05A48;border-color:#F0D4CC}
+.rb-block{background:#FBF4E2;color:#A97C24;border-color:#EFE3BC}
+.rb-na{background:#F4F5F1;color:#7A8474;border-color:#E3E7DE}
+.auto{font-size:12px;color:#7A8474;display:flex;align-items:center;gap:7px;margin-bottom:13px}
+.auto input{accent-color:#4E9A62}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:11px;font-weight:600;color:#7A8474;margin-bottom:5px}
+.fld input,.fld textarea{width:100%;font-size:12.5px;padding:9px 11px;border:1px solid #DDE3D4;border-radius:10px;background:#FDFEFB;color:#3D4438;font-family:inherit;resize:none}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:#4E9A62;box-shadow:0 0 0 3px rgba(78,154,98,.15)}
+.fld2{display:flex;gap:10px}
+.fld2 .fld{flex:1}
+
+/* 底部 */
+.navbar{background:#fff;border-top:1px solid #E7ECDF;padding:10px 22px;display:flex;justify-content:center;align-items:center;gap:20px}
+.nb-btn{font-size:12.5px;padding:8px 20px;border:1px solid #DDE3D4;border-radius:10px;background:#fff;color:#4A5244;cursor:pointer}
+.nb-btn:hover{border-color:#4E9A62;color:#3E7D4F}
+.nb-btn kbd{font-size:10px;opacity:.55;margin-left:4px;font-family:inherit}
+.nb-cnt{font-size:12.5px;font-weight:600;color:#7A8474}
+</style>
+</head>
+<body>
+
+<div class="demo"><b>08</b> 自然柔和 · 护眼 / 亲和 / 低饱和 <span class="tag">落地成本：低</span><span style="opacity:.6">按键盘 1-4 可模拟标记结果</span></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><i></i>测试用例执行器<small>IND-1.14.2_工业回归.xlsx</small></div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn on">执行界面</button>
+    <button class="tb-btn">表格</button>
+    <button class="tb-btn">测试详情</button>
+    <div class="tb-sep"></div>
+    <select class="tb-sel"><option>第 3 轮 · v1.14.2</option><option>第 2 轮</option></select>
+    <button class="tb-btn">筛选</button>
+    <button class="tb-btn">下一条未测</button>
+    <div class="tb-right">
+      <button class="tb-btn primary">导出子任务</button>
+      <span class="tb-save">已保存</span>
+    </div>
+  </header>
+
+  <div class="progress">
+    <div class="pbar"><span class="p" style="width:40%"></span><span class="f" style="width:4.4%"></span><span class="b" style="width:2.2%"></span><span class="n" style="width:4.4%"></span></div>
+    <div class="pinfo">已完成 <b id="doneNum">23</b> / 45 · 通过 18 · 失败 2 · 阻塞 1 · 跳过 2</div>
+  </div>
+
+  <div class="layout">
+    <section class="case">
+      <div class="badges">
+        <span class="bd id">IND-1.14.2-DCRK-001</span>
+        <span class="bd kind">功能</span>
+        <span class="bd p0">P0</span>
+        <span class="bd risk">高风险</span>
+        <span class="bd mod">倒车入库</span>
+      </div>
+      <h1>倒车入库 — 目标车位识别与入库</h1>
+      <div class="msec">
+        <h2>前置条件</h2>
+        <p class="prec">机器人电量 ≥ 20%；场地车位线清晰；调度系统在线且已下发建图任务</p>
+      </div>
+      <div class="msec">
+        <h2>测试步骤</h2>
+        <ol>
+          <li>在调度界面下发“倒车入库”任务</li>
+          <li>机器人自动导航至目标车位前方约 1.5m 处</li>
+          <li>观察机器人倒车入库全程，记录停位偏差</li>
+        </ol>
+      </div>
+      <div class="msec">
+        <h2>预期结果</h2>
+        <ul>
+          <li>任务下发成功，机器人开始执行，状态置为“执行中”</li>
+          <li>机器人准确停入车位，左右距离误差 &lt; 5cm</li>
+          <li>入库完成，上报任务成功并回到待命状态</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside class="exec">
+      <h2>执行结果</h2>
+      <div class="rbtns">
+        <button class="rb-pass">通过<kbd>1</kbd></button>
+        <button class="rb-fail">失败<kbd>2</kbd></button>
+        <button class="rb-block">阻塞<kbd>3</kbd></button>
+        <button class="rb-na">跳过<kbd>4</kbd></button>
+      </div>
+      <label class="auto"><input type="checkbox" checked /> 标记通过/跳过后自动下一条</label>
+      <div class="fld"><label>实际现象 / 结果</label><textarea rows="2" placeholder="记录实际观察到的现象或结果…"></textarea></div>
+      <div class="fld2">
+        <div class="fld"><label>发现时间</label><input type="text" placeholder="YYYY-MM-DD HH:mm:ss" /></div>
+        <div class="fld"><label>BugID</label><input type="text" placeholder="关联缺陷" /></div>
+      </div>
+      <div class="fld"><label>备注 / 问题描述</label><textarea rows="2" placeholder="补充说明或问题描述…"></textarea></div>
+    </aside>
+  </div>
+
+  <footer class="navbar">
+    <button class="nb-btn">← 上一条<kbd>←</kbd></button>
+    <span class="nb-cnt">23 / 45</span>
+    <button class="nb-btn">下一条 →<kbd>→</kbd></button>
+  </footer>
+</div>
+
+<script>
+const btns=document.querySelectorAll('.rbtns button');
+let done=23;
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  if(!b.dataset.marked){b.dataset.marked=1;done++;document.getElementById('doneNum').textContent=done;}
+}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  const m={1:'.rb-pass',2:'.rb-fail',3:'.rb-block',4:'.rb-na'};
+  if(m[e.key])document.querySelector(m[e.key]).click();
+});
+</script>
+</body>
+</html>

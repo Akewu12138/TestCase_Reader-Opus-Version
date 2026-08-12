@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试用例执行器 · Swiss International</title>
+<style>
+:root{
+  --white:#ffffff; --black:#000000; --red:#e63946; --yellow:#fcbf49;
+  --gray-1:#f5f5f5; --gray-2:#e0e0e0; --gray-3:#888888; --gray-4:#444444;
+  --pass:#1d8a4a; --fail:#e63946; --block:#fcbf49;
+  --sans:"Helvetica Neue","Inter","PingFang SC","Microsoft YaHei",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);background:var(--white);color:var(--black);
+  font-size:14px;line-height:1.5;padding-bottom:72px;-webkit-font-smoothing:antialiased;}
+.grid-bg{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(90deg,rgba(0,0,0,.025) 1px,transparent 1px);
+  background-size:calc((100vw - 48px)/12) 100%;background-position:24px 0;}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:stretch;
+  background:var(--black);color:var(--white);border-bottom:4px solid var(--red);}
+.topbar-left{display:flex;align-items:center;gap:0;padding:0 20px;background:var(--red)}
+.brand{font-weight:700;font-size:16px;white-space:nowrap;letter-spacing:-.3px;color:var(--white)}
+.file-name{color:var(--gray-3);font-size:12px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:220px;padding-left:20px;align-self:center}
+.topbar-right{display:flex;align-items:center;gap:0;flex:1;justify-content:flex-end;flex-wrap:wrap}
+.btn{padding:9px 13px;border:none;background:transparent;color:var(--white);font-size:12px;
+  cursor:pointer;font-family:var(--sans);white-space:nowrap;border-right:1px solid #222;letter-spacing:.3px}
+.btn:hover{background:#1a1a1a}
+.btn-primary{background:var(--yellow);color:var(--black);font-weight:700}
+.btn-primary:hover{background:#ffd969}
+.select{padding:8px 10px;border:none;background:transparent;color:var(--white);font-size:12px;
+  max-width:140px;font-family:var(--sans);border-right:1px solid #222}
+.select option{background:var(--black)}
+.progress-wrap{display:flex;align-items:stretch;background:var(--gray-1);border-bottom:1px solid var(--gray-2)}
+.progress-num{padding:14px 20px;background:var(--black);color:var(--yellow);font-size:22px;font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.progress-bar-wrap{flex:1;padding:0 20px;display:flex;align-items:center}
+.progress-bar{flex:1;height:10px;background:var(--white);border:1px solid var(--black);display:flex}
+.progress-seg{height:100%}
+.progress-meta{padding:14px 20px;color:var(--gray-4);font-size:12px;border-left:1px solid var(--gray-2);min-width:140px}
+.progress-meta b{color:var(--black);font-size:14px}
+.main{max-width:1400px;margin:0 auto;padding:0;position:relative;z-index:1}
+.card{background:var(--white);border:1px solid var(--black);margin:24px;display:grid;
+  grid-template-columns:minmax(0,1fr) 380px;align-items:start}
+.card-main{padding:32px 36px;border-right:1px solid var(--black)}
+.card-head{border-bottom:2px solid var(--black);padding-bottom:16px;margin-bottom:0}
+.case-no{font-size:64px;font-weight:700;line-height:.9;color:var(--red);letter-spacing:-3px;
+  font-variant-numeric:tabular-nums;margin:0 0 8px}
+.case-no-sub{font-size:11px;color:var(--gray-3);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+.badges{display:flex;flex-wrap:wrap;gap:0;margin-bottom:14px}
+.badge{font-size:11px;font-weight:700;padding:3px 10px;border:1px solid var(--black);
+  letter-spacing:.5px;text-transform:uppercase}
+.badge-id{background:var(--black);color:var(--white)}
+.badge.p0{background:var(--red);color:var(--white);border-color:var(--red)}
+.badge.risk{background:var(--yellow);color:var(--black);border-color:var(--black)}
+.badge.module{background:var(--white);color:var(--black)}
+.case-title{font-size:24px;line-height:1.3;margin:8px 0 0;font-weight:700;letter-spacing:-.3px}
+.section{padding:18px 0;border-bottom:1px solid var(--gray-2);display:grid;grid-template-columns:120px 1fr;gap:24px;align-items:start}
+.section:last-child{border-bottom:none}
+.section-title{font-size:11px;font-weight:700;color:var(--gray-3);margin:0;
+  letter-spacing:1.5px;text-transform:uppercase;padding-top:2px}
+.section-title span{display:block;color:var(--red);font-size:18px;margin-top:2px}
+.section-body{white-space:pre-wrap;font-size:14px;line-height:1.7;color:var(--black)}
+.precond{background:var(--gray-1);padding:12px 14px;font-size:13px;line-height:1.7}
+.expected{background:var(--yellow);padding:12px 14px;font-size:13px;line-height:1.7}
+.steps-list{margin:0;padding:0;list-style:none;font-size:14px}
+.steps-list li{display:grid;grid-template-columns:32px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--gray-1)}
+.steps-list li:last-child{border-bottom:none}
+.steps-list li::before{content:counter(s,decimal-leading-zero);counter-increment:s;color:var(--red);
+  font-weight:700;font-variant-numeric:tabular-nums}
+.steps-list{counter-reset:s}
+.card-side{padding:24px 28px;background:var(--gray-1);position:sticky;top:122px;max-height:calc(100vh - 150px);overflow:auto}
+.card-side h2{font-size:11px;font-weight:700;color:var(--gray-3);margin:0 0 12px;
+  letter-spacing:1.5px;text-transform:uppercase;border-bottom:2px solid var(--black);padding-bottom:8px}
+.result-buttons{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:14px;border:1px solid var(--black)}
+.rbtn{padding:13px 6px;font-size:13px;font-weight:700;border:none;background:var(--white);color:var(--black);
+  cursor:pointer;text-align:center;font-family:var(--sans);letter-spacing:.5px;border-right:1px solid var(--black);
+  border-bottom:1px solid var(--black)}
+.rbtn:nth-child(2n){border-right:none}
+.rbtn:nth-last-child(-n+2){border-bottom:none}
+.rbtn .kbd{font-size:10px;color:var(--gray-3);margin-left:3px;font-weight:400}
+.rbtn.pass.active{background:var(--pass);color:var(--white)}
+.rbtn.fail.active{background:var(--fail);color:var(--white)}
+.rbtn.block.active{background:var(--block);color:var(--black)}
+.rbtn.na.active{background:var(--gray-4);color:var(--white)}
+.auto-advance{font-size:11px;color:var(--gray-4);margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px}
+.field{display:block;margin-bottom:13px}
+.field-label{display:block;font-size:10px;font-weight:700;color:var(--gray-3);margin-bottom:5px;
+  letter-spacing:1px;text-transform:uppercase}
+.field-input{width:100%;padding:8px 10px;border:1px solid var(--black);background:var(--white);
+  font-size:13px;font-family:var(--sans);color:var(--black);resize:vertical;border-radius:0}
+.field-input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 2px var(--yellow)}
+.field-input.attn{border-color:var(--red);background:#fff5f5}
+.field-row.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.evidence{margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-2)}
+.evidence-item{color:var(--black);font-size:12px;display:block;padding:3px 0;border-bottom:1px solid var(--gray-2)}
+.evidence-item::before{content:"→ ";color:var(--red);font-weight:700}
+.navbar{position:fixed;bottom:0;left:0;right:0;z-index:20;display:flex;align-items:stretch;
+  background:var(--black);border-top:4px solid var(--red)}
+.navbar-inner{display:flex;align-items:center;justify-content:space-between;gap:0;width:100%;max-width:1400px;margin:0 auto}
+.btn-nav{background:var(--yellow);color:var(--black);border:none;font-size:14px;padding:14px 28px;
+  cursor:pointer;font-family:var(--sans);border-radius:0;font-weight:700;letter-spacing:.3px}
+.btn-nav:last-child{background:var(--red);color:var(--white)}
+.btn-nav .kbd{font-size:11px;opacity:.7;margin-left:5px}
+.nav-counter{flex:1;text-align:center;color:var(--white);font-size:13px;font-variant-numeric:tabular-nums;letter-spacing:1px}
+@media(max-width:1099px){
+  .card{grid-template-columns:1fr;margin:16px}
+  .card-main{border-right:none;border-bottom:1px solid var(--black)}
+  .card-side{position:static}
+  .section{grid-template-columns:1fr;gap:8px}
+}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="brand">TESTRUNNER</span>
+    <span class="file-name">IND-1.14.2 工业ROS回归用例库.xlsx</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-primary">测试详情</button>
+    <button class="btn">表格视图</button>
+    <select class="select"><option>R3 回归</option></select>
+    <button class="btn">＋新建列</button>
+    <button class="btn">筛选·2</button>
+    <select class="select"><option>倒车入库</option></select>
+    <button class="btn">下一条未测</button>
+    <button class="btn">导出</button>
+    <button class="btn">导入</button>
+    <button class="btn">?</button>
+    <button class="btn">⋯</button>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-num">44%</div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar">
+      <div class="progress-seg" style="width:30%;background:var(--pass)"></div>
+      <div class="progress-seg" style="width:8%;background:var(--fail)"></div>
+      <div class="progress-seg" style="width:4%;background:var(--block)"></div>
+      <div class="progress-seg" style="width:2%;background:var(--gray-3)"></div>
+    </div>
+  </div>
+  <div class="progress-meta">已完成 <b>142</b> / 320<br>筛选中</div>
+</div>
+
+<main class="main">
+  <section class="card">
+    <div class="card-main">
+      <div class="card-head">
+        <div class="case-no-sub">CASE NO.</div>
+        <div class="case-no">007</div>
+        <div class="badges">
+          <span class="badge badge-id">IND-1.14.2-DCRK-007</span>
+          <span class="badge">功能</span>
+          <span class="badge p0">P0</span>
+          <span class="badge risk">风险·高</span>
+          <span class="badge module">倒车入库</span>
+        </div>
+        <h1 class="case-title">机器人从充电桩自主驶入倒车入库目标位并精准停靠</h1>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">前置条件<span>01</span></h2>
+        <div class="section-body precond">1. 机器人电量 ≥ 80%
+2. 充电桩已归位且网络正常
+3. 入库区无遮挡物，库位线清晰</div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">测试步骤<span>02</span></h2>
+        <div class="section-body">
+          <ol class="steps-list">
+            <li>在 Web 端选择「倒车入库」任务并下发给机器人</li>
+            <li>观察机器人离桩并向目标库位移动</li>
+            <li>机器人执行倒车对准库位线，速度平滑无急停</li>
+            <li>确认停靠后上报「入库完成」状态</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">预期结果<span>03</span></h2>
+        <div class="section-body expected">1. 机器人 8s 内离桩
+2. 倒车轨迹横向偏差 ≤ 3cm
+3. 最终停靠位姿误差 ≤ 2cm
+4. 状态变更为「已入库」，日志无 ERROR</div>
+      </div>
+    </div>
+
+    <aside class="card-side">
+      <h2>执行结果</h2>
+      <div class="result-buttons">
+        <button class="rbtn pass">PASS<span class="kbd">1</span></button>
+        <button class="rbtn fail active">FAIL<span class="kbd">2</span></button>
+        <button class="rbtn block">BLOCK<span class="kbd">3</span></button>
+        <button class="rbtn na">SKIP<span class="kbd">4</span></button>
+      </div>
+      <div class="auto-advance">[✓] 自动下一条</div>
+
+      <label class="field">
+        <span class="field-label">实际现象</span>
+        <textarea class="field-input" rows="3">倒车时横向偏差 6.2cm，超出 3cm 阈值；重定位后二次入库偏差 2.4cm 达标。</textarea>
+      </label>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">发现时间</span>
+          <input class="field-input" value="2026-08-12 21:14:33">
+        </label>
+        <label class="field">
+          <span class="field-label">测试人员</span>
+          <input class="field-input" value="张工">
+        </label>
+      </div>
+      <div class="field-row two-col">
+        <label class="field">
+          <span class="field-label">BugID</span>
+          <input class="field-input attn" value="KT-2381">
+        </label>
+        <label class="field">
+          <span class="field-label">备注</span>
+          <input class="field-input" value="标定参数">
+        </label>
+      </div>
+      <div class="evidence">
+        <span class="field-label">失败证据</span>
+        <input class="field-input" placeholder="上传截图 / 日志">
+        <span class="evidence-item">dock_trace_007.csv · 12KB</span>
+        <span class="evidence-item">deviation_snapshot.png · 340KB</span>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<footer class="navbar">
+  <div class="navbar-inner">
+    <button class="btn-nav">← 上一条<span class="kbd">←</span></button>
+    <span class="nav-counter">007 / 320 — 筛选中</span>
+    <button class="btn-nav">下一条 →<span class="kbd">→</span></button>
+  </div>
+</footer>
+
+</body>
+</html>
